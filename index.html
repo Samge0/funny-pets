@@ -60,6 +60,7 @@
         box-shadow: 0 6px 20px rgba(90,100,140,0.12);
         animation: floaty 4.5s ease-in-out infinite;
       }
+      .pet-card img { width: 92px; height: 92px; object-fit: contain; filter: drop-shadow(0 6px 10px rgba(40,60,90,0.18)); }
       .pet-card:nth-child(2) { animation-delay: -1.2s; } .pet-card:nth-child(3) { animation-delay: -2.4s; }
       .pet-card:nth-child(4) { animation-delay: -3.1s; } .pet-card:nth-child(5) { animation-delay: -0.6s; }
       @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
@@ -136,7 +137,14 @@
         <a class="btn primary" href="./app/" id="hero-play">🎮 免费开玩</a>
         <a class="btn ghost" href="https://github.com/Samge0/funny-pets" target="_blank" rel="noopener">⭐ GitHub 源码</a>
       </div>
-      <div class="pets-band" id="pets-band"><!-- 精灵 SVG 由构建时脚本注入 --></div>
+      <div class="pets-band" id="pets-band">
+        <!-- 3D 渲染快照（scripts/render-promo-pets.mjs 生成，与游戏内模型同源） -->
+        <div class="pet-card"><img src="./promo/pets/pet-0.png" alt="原创精灵蹦丘宝" loading="lazy" /><div class="nm">蹦丘宝</div><div class="chips"><span class="chip" style="background:#8fa60a">虫</span></div></div>
+        <div class="pet-card"><img src="./promo/pets/pet-1.png" alt="原创精灵壳妮" loading="lazy" /><div class="nm">壳妮</div><div class="chips"><span class="chip" style="background:#2f80d6">水</span><span class="chip" style="background:#4caf50">草</span><span class="chip" style="background:#2f80d6">稀有</span></div></div>
+        <div class="pet-card"><img src="./promo/pets/pet-2.png" alt="原创精灵蹦拉" loading="lazy" /><div class="nm">蹦拉</div><div class="chips"><span class="chip" style="background:#a38c5d">岩石</span></div></div>
+        <div class="pet-card"><img src="./promo/pets/pet-3.png" alt="原创精灵绒波宝" loading="lazy" /><div class="nm">绒波宝</div><div class="chips"><span class="chip" style="background:#8f9fa8">钢</span></div></div>
+        <div class="pet-card"><img src="./promo/pets/pet-4.png" alt="原创精灵泡妮酱" loading="lazy" /><div class="nm">泡妮酱</div><div class="chips"><span class="chip" style="background:#f4c531">电</span></div></div>
+      </div>
     </header>
 
     <section id="features" class="wrap">

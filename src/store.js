@@ -1,9 +1,10 @@
 // 全局响应式状态：存档 + 刷新中的野生精灵 + 战斗 + toast。
+// v2：加入捕捉/进化庆祝弹窗状态、收集目标、战斗动画事件流。
 
 import { reactive, computed } from 'vue';
 import { readSave, writeSave, writeLlmConfig, readLlmConfig } from './storage.js';
 import { generatePet } from './core/generator.js';
-import { evolvePet, expForLevel, statsAt, EVOLVE_AT } from './core/evolve.js';
+import { applyExpGain, statsAt } from './core/evolve.js';
 import { MAPS } from './data/maps.js';
 import { randomSeed } from './core/rng.js';
 import { RARITIES } from './data/names.js';
@@ -23,9 +24,23 @@ export function persist() {
   persistTimer = setTimeout(() => writeSave(save, showToast), 150);
 }
 
+// ---- 全屏庆祝弹窗状态（捕捉/进化/升级共用） ----
+export const celebration = reactive({ show: false, kind: null, pet: null, detail: null });
+export function celebrate(kind, pet, detail = null) {
+  celebration.kind = kind;
+  celebration.pet = pet;
+  celebration.detail = detail;
+  celebration.show = true;
+}
+export function closeCelebration() {
+  celebration.show = false;
+  celebration.kind = null;
+  celebration.pet = null;
+  celebration.detail = null;
+}
+
 // ---- 精灵生命周期 ----
 
-// 由刷新点生成野生精灵（LLM 覆盖由调用方处理：生成后改写 name/types/look/lore）
 export function spawnWild(mapId, overrides = null) {
   const seed = randomSeed();
   const base = generatePet(seed, mapId);
@@ -33,16 +48,26 @@ export function spawnWild(mapId, overrides = null) {
     ...base,
     ...overrides,
     seed: overrides?.seed ?? seed,
-    level: Math.max(2, Math.round(2 + Math.random() * 8)),
+    level: mapLevelRoll(mapId),
     exp: 0,
     phase: 0,
-    hp: 1, // 占位，下面按等级填
+    hp: 1,
   };
   pet.hp = statsAt(pet, pet.level).hp;
   save.dexSeen[seed] = 1;
   save.counters.encounters++;
   persist();
   return pet;
+}
+
+// 地图等级带：越往后地图野生精灵等级越高
+const MAP_LEVEL = { meadow: [3, 9], shore: [7, 14], cave: [12, 20], volcano: [17, 26], forest: [22, 32], peak: [27, 38] };
+export function mapLevelRoll(mapId) {
+  const [lo, hi] = MAP_LEVEL[mapId] ?? [3, 9];
+  return lo + Math.floor(Math.random() * (hi - lo + 1));
+}
+export function mapLevelRange(mapId) {
+  return MAP_LEVEL[mapId] ?? [3, 9];
 }
 
 export function adoptPet(wild) {
@@ -63,27 +88,15 @@ export const party = computed(() =>
   save.partyIds.map(id => petByUid(id)).filter(Boolean).map(p => withStats(p))
 );
 
-// 附带战斗面板要用的实时数值（不改存档字段）
 export function withStats(pet) {
   const s = statsAt(pet, pet.level);
   return { ...pet, maxHp: s.hp, atkStat: s.atk, defStat: s.def, spdStat: s.spd };
 }
 
 export function gainExp(pet, amount) {
-  pet.exp += amount;
-  let leveled = false;
-  while (pet.level < 50 && pet.exp >= expForLevel(pet.level + 1)) {
-    pet.level++;
-    leveled = true;
-  }
-  let evolvedTo = null;
-  if (leveled && pet.level >= EVOLVE_AT && (pet.phase ?? 0) === 0) {
-    const evolved = evolvePet(pet, 1);
-    Object.assign(pet, evolved);
-    evolvedTo = pet;
-  }
+  const r = applyExpGain(pet, amount);
   persist();
-  return { leveled, evolvedTo };
+  return r;
 }
 
 export function rarityInfo(key) {

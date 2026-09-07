@@ -1,8 +1,6 @@
-// 宣传页构建时增强脚本：注入随机精灵展示与属性 chip（含对比度自适应）。
-// Vite 会把这个模块打包进宣传页入口，页面上不留运行时依赖。
+// 宣传页构建时增强脚本：注入 18 属性 chip 云（含对比度自适应）。
+// 精灵展示带已改为静态 3D 快照 PNG（scripts/render-promo-pets.mjs 生成），不再动态注入。
 
-import { petSvg } from '../src/core/sprites.js';
-import { generatePet } from '../src/core/generator.js';
 import { TYPES, TYPE_COLORS } from '../src/data/types.js';
 
 // ---- 相对亮度 → chip 文字颜色自适应（WCAG 对比度保障）----
@@ -13,28 +11,10 @@ function luminance(hex) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-function chipHtml(type, cls = '') {
+function chipHtml(type) {
   const bg = TYPE_COLORS[type] ?? '#9fa19f';
   const darkText = luminance(bg) > 0.55; // 浅色背景配深色文字
   return `<span class="chip ${darkText ? 'dark-text' : ''}" style="background:${bg}">${type}</span>`;
-}
-
-// ---- 精灵展示带：固定种子采样（同一次构建永远同图，缓存友好）----
-function renderPets() {
-  const band = document.getElementById('pets-band');
-  if (!band) return;
-  // 挑 5 个确定 seed，尽量覆盖不同稀有度/属性
-  const seeds = [20260907, 114523, 777001, 3061204, 51234];
-  const mapIds = ['meadow', 'shore', 'cave', 'volcano', 'peak'];
-  band.innerHTML = seeds.map((seed, i) => {
-    const pet = generatePet(seed, mapIds[i]);
-    const chips = pet.types.map(t => chipHtml(t)).join('');
-    return `<div class="pet-card">
-      <div class="sprite">${petSvg(pet, 84)}</div>
-      <div class="nm">${pet.name}</div>
-      <div class="chips">${chips}</div>
-    </div>`;
-  }).join('');
 }
 
 // ---- 属性云 ----
@@ -44,5 +24,4 @@ function renderTypes() {
   cloud.innerHTML = TYPES.map(t => chipHtml(t)).join('');
 }
 
-renderPets();
 renderTypes();

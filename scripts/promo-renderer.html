@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8" />
+<!-- 用 import map 把裸模块名 'three' 映射到本地构建产物 -->
+<script type="importmap">
+{ "imports": { "three": "../node_modules/three/build/three.module.js" } }
+</script>
+</head>
+<body>
+<script type="module">
+  const { generatePet } = await import('../src/core/generator.js');
+  const { buildPet3D } = await import('../src/core/sprite3d.js');
+
+  const seeds = [20260907, 114523, 777001, 3061204, 51234];
+  const mapIds = ['meadow', 'shore', 'cave', 'volcano', 'peak'];
+  const THREE = await import('three');
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  renderer.setSize(220, 220);
+  renderer.setClearColor(0x000000, 0);
+  document.body.appendChild(renderer.domElement);
+  window.__results = [];
+
+  for (let i = 0; i < seeds.length; i++) {
+    const pet = generatePet(seeds[i], mapIds[i]);
+    const scene = new THREE.Scene();
+    const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
+    cam.position.set(0, 1.1, 5.2); cam.lookAt(0, 0.1, 0);
+    scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+    const key = new THREE.DirectionalLight(0xfff4e0, 1.6); key.position.set(2, 3, 4);
+    const rim = new THREE.DirectionalLight(0xbfd0ff, 0.8); rim.position.set(-3, 1.5, -2);
+    scene.add(key, rim);
+    const { group, update } = buildPet3D(pet);
+    scene.add(group); update(1.2);
+    renderer.render(scene, cam);
+    const dataUrl = renderer.domElement.toDataURL('image/png');
+    window.__results.push({ name: pet.name, types: pet.types, rarity: pet.rarity, dataUrl });
+  }
+  window.__done = true;
+</script>
+</body>
+</html>

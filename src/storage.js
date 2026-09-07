@@ -1,5 +1,5 @@
-// 存档：localStorage + 版本号 + 严格 schema 校验（参考 tihuqiche 的防御式模式）。
-// 精灵只存 seed + 成长字段，读取时由生成器/进化器重建完整数据 => 存档体积小、导入导出安全。
+// 存档：localStorage + 版本号 + 严格 schema 校验。
+// v2：level 上限不变，phase 允许 0-2，加收 collection 元数据。
 
 const SAVE_KEY = 'funny-pets-save-v1';
 const LLM_KEY = 'funny-pets-llm-v1';
@@ -7,11 +7,11 @@ const LLM_KEY = 'funny-pets-llm-v1';
 export function emptySave() {
   return {
     version: 1,
-    pets: [],            // [{ uid, seed, mapId, name, types, rarity, iv, base, nature, moves, look, lore, level, exp, phase, caughtAt }]
+    pets: [],
     nextUid: 1,
-    dexSeen: {},         // seed -> 1（仅记录遇见过）
-    partyIds: [],        // 上阵 uid，最多 4
-    counters: { encounters: 0, caught: 0, battlesWon: 0 },
+    dexSeen: {},
+    partyIds: [],
+    counters: { encounters: 0, caught: 0, battlesWon: 0, evolutions: 0 },
   };
 }
 
