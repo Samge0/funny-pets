@@ -1,8 +1,10 @@
 # 奇幻萌宠 FunPets 🐾
 
+> 🌐 **在线游玩**：<https://samge0.github.io/funny-pets/>（宣传页）· [直接进入游戏](https://samge0.github.io/funny-pets/app/)
+
 纯前端的原创精灵捕捉休闲游戏，参考 [Licoy/tihuqiche](https://github.com/Licoy/tihuqiche) 的工程模式（Vue 3 + Vite + GitHub Pages 官方 Actions 部署）。所有精灵均为随机生成的**原创**形象与名字，不包含任何现有动漫/游戏作品的受版权保护内容。
 
-![遭遇页](test-results/encounter.png)
+![宣传页](test-results/promo-desktop.png)
 
 ## 玩法
 
@@ -20,11 +22,15 @@
 
 ```bash
 npm install
-npm run dev        # 开发热更新
-npm run build      # 产物输出 dist/
+npm run dev        # 开发热更新（游戏在 /app/ 路径）
+npm run build      # 产物输出 dist/（/ = 宣传页，/app/ = 游戏）
 npm run preview    # 本地预览构建产物
 node tests/smoke.mjs   # Playwright 冒烟测试（需先 build；可用 PLAYWRIGHT_CHANNEL=chrome 复用本机 Chrome）
 ```
+
+## 站点结构
+
+部署后 `/` 为宣传页（含随机精灵展示、玩法说明、AI 生成介绍），`/app/` 为游戏本体。宣传页的精灵展示与属性云由构建时脚本（`promo/main.js`）注入真实游戏数据，固定种子采样保证每次构建产物稳定。
 
 ## 部署到 GitHub Pages
 
@@ -33,11 +39,14 @@ node tests/smoke.mjs   # Playwright 冒烟测试（需先 build；可用 PLAYWRI
 3. 仓库 **Settings → Pages → Build and deployment → Source** 选择 **GitHub Actions**。
 4. 之后每次推送自动构建部署；`.github/workflows/deploy.yml` 已就绪，无需 gh-pages 分支和个人令牌。
 
-本地访问 `http://127.0.0.1:4173/funny-pets/`。
+本地访问 `http://127.0.0.1:4173/funny-pets/`（宣传页）、`http://127.0.0.1:4173/funny-pets/app/`（游戏）。
 
 ## 项目结构
 
 ```text
+├── index.html              # 宣传页（站点根路径 /）
+├── promo/main.js           # 宣传页构建时注入（真实精灵 SVG + 属性云 + 对比度自适应）
+├── app/index.html          # 游戏入口（/app/ 路径）
 ├── src/
 │   ├── App.vue / main.js    # 应用与入口（单文件组件，视图内联在 App 中）
 │   ├── data/
