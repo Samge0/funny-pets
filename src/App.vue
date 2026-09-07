@@ -3,7 +3,8 @@ import { ref, reactive, computed, onMounted, nextTick } from 'vue';
 import { save, showToast, spawnWild, adoptPet, party, withStats, gainExp, persist, rarityInfo, mapInfo, isMapUnlocked, mapLevelRange, llmConfig, saveLlmConfig, petByUid, celebration, closeCelebration, celebrate } from './store.js';
 import { MAPS } from './data/maps.js';
 import { petSvg } from './core/sprites.js';
-import { isLlmConfigured, generatePetWithLlm, tauntWithLlm, localTaunt } from './core/llm.js';
+import { isLlmConfigured, generatePetWithLlm, tauntWithSoul, localTaunt } from './core/llm.js';
+import { ensureSoul, updateSoul, driftTraits, touchRelation, addEpisodic, onEvolve } from './core/soul.js';
 import { newBattleState, battleTurn, catchChance } from './core/battle.js';
 import { statsAt } from './core/evolve.js';
 import { TYPE_COLORS } from './data/types.js';
@@ -136,29 +137,48 @@ function playAnim(kind, who = null, text = null) {
   setTimeout(() => { anim.value = { who: null, kind: null }; }, 480);
 }
 
-// ---- 战斗吐槽（LLM 流式，可关；失败降级本地模板） ----
+// ---- 战斗吐槽（灵魂驱动：persona + 记忆 + 羁绊；LLM 流式，失败降级本地模板） ----
 const taunt = reactive({ text: '', who: null });
 let tauntAbort = null;
+function soulOf(pet) {
+  return ensureSoul(pet);
+}
 function fireTaunt(attacker, defender, evt) {
+  const soul = soulOf(attacker);
+  const trainerTitle = soul.relation.title;
+  // 战场情境描述（喂给 LLM 的这一回合事实）
+  const hpRatio = attacker.hp / Math.max(1, attacker.maxHp);
+  const scene = `你的技能「${evt.moveName}」${evt.crit ? '打出了会心一击' : ''}，对${defender.name}造成 ${evt.damage} 点伤害（${evt.eff >= 2 ? '效果超级拔群' : evt.eff > 1 ? '效果拔群' : evt.eff === 0 ? '完全无效' : evt.eff < 1 ? '效果不佳' : '效果一般'}）。你当前体力 ${Math.round(hpRatio * 100)}%。用一句话说出你此刻的战斗心声。`;
+
+  // 本地兜底立即上屏（LLM 到达后流式覆盖），保证节奏不空窗
+  taunt.text = localTaunt(attacker, defender, evt.moveName, evt.damage, evt.eff, evt.crit, hpRatio, trainerTitle);
+  taunt.who = 'player';
+
   if (!llmConfig.enabled || !isLlmConfigured(llmConfig)) {
-    taunt.text = localTaunt(attacker, defender, evt.moveName ?? '', evt.damage, evt.eff, evt.crit);
-    taunt.who = 'player';
     setTimeout(() => { taunt.text = ''; }, 2600);
     return;
   }
   tauntAbort?.abort();
   tauntAbort = new AbortController();
-  taunt.text = ''; taunt.who = 'player';
-  tauntWithLlm(llmConfig, attacker, defender, evt.moveName ?? '攻击', evt.damage, evt.eff, tauntAbort.signal,
+  taunt.text = '';
+  tauntWithSoul(llmConfig, attacker, soul, scene, tauntAbort.signal,
     (delta) => { taunt.text += delta; })
-    .then(full => { taunt.text = full || taunt.text; setTimeout(() => { if (taunt.text === full) taunt.text = ''; }, 2600); })
-    .catch(() => {
-      taunt.text = localTaunt(attacker, defender, evt.moveName ?? '攻击', evt.damage, evt.eff, evt.crit);
-      setTimeout(() => { taunt.text = ''; }, 2600);
-    });
+    .then(result => {
+      taunt.text = result.body || taunt.text;
+      // 灵魂成长：战斗共识 + LLM 返回的状态
+      import('./core/soul.js').then(({ updateSoul, driftTraits, touchRelation }) => {
+        updateSoul(attacker.uid, (sl) => {
+          touchRelation(sl, 'battle');
+          driftTraits(sl, result.state.drift);
+        });
+      });
+      setTimeout(() => { if (taunt.text === result.body) taunt.text = ''; }, 2800);
+    })
+    .catch(() => { /* 已有本地兜底上屏，静默 */ });
 }
 function fireTauntMiss(attacker, defender) {
-  taunt.text = localTaunt(attacker, defender, '', 0, 1, false) || '啊，打歪了…';
+  const soul = soulOf(attacker);
+  taunt.text = localTaunt(attacker, defender, '', 0, 1, false, attacker.hp / Math.max(1, attacker.maxHp), soul.relation.title);
   taunt.who = 'player';
   setTimeout(() => { taunt.text = ''; }, 2200);
 }
@@ -208,17 +228,26 @@ async function act(action) {
 function winBattle() {
   const state = battle.value;
   const mine = petByUid(state.active.uid) ?? state.active;
+  ensureSoul(mine);
   const exp = 26 + state.wild.level * 6;
   lastExpGain.value = exp;
   const r = gainExp(mine, exp);
   save.counters.battlesWon++;
-  // 经验分享：其余队员 40%
+  // 灵魂成长：胜利写入经历 + 羁绊升温
+  updateSoul(mine.uid, (sl) => {
+    touchRelation(sl, 'battle');
+    touchRelation(sl, 'win');
+    addEpisodic(sl, `在${mapInfo(state.wild.caughtMap ?? state.wild.caughtAt ?? '野外').name}战胜了野生的${state.wild.name}（Lv.${state.wild.level}）。`);
+  });  // 经验分享：其余队员 40%
   for (const p of save.pets) {
     if (p.uid !== mine.uid && save.partyIds.includes(p.uid)) gainExp(p, Math.round(exp * 0.4));
   }
   persist();
   if (r.evolvedTo) {
-    celebrate('evolve', r.evolvedTo, `进化成了 ${r.evolvedTo.name}！技能也变强了`);
+    // 灵魂可能尚未建立（老存档精灵直接跳到进化）——ensure 后再继承
+    const soul = ensureSoul(r.evolvedTo);
+    onEvolve(soul, r.evolvedTo.name, r.evolvedTo.phase ?? 1);
+    celebrate('evolve', r.evolvedTo, `进化成了 ${r.evolvedTo.name}！灵魂也成长了`);
   } else if (r.leveled) {
     celebrate('levelup', mine, `${mine.name} 升到了 Lv.${mine.level}！${r.newMoves.length ? r.newMoves.join('，') : `获得 ${exp} 点经验`}`);
   } else {
@@ -232,7 +261,14 @@ function winBattle() {
 function loseBattle() {
   const state = battle.value;
   const mine = petByUid(state.active.uid) ?? state.active;
+  ensureSoul(mine);
   gainExp(mine, 10 + mine.level * 2);
+  // 灵魂成长：倒下也是共同经历（羁绊微升——共患难）
+  updateSoul(mine.uid, (sl) => {
+    touchRelation(sl, 'battle');
+    touchRelation(sl, 'loss');
+    addEpisodic(sl, `被野生的${state.wild.name}打败了，虽然很不甘心，但下次会赢回来。`);
+  });
   // 检查是否还有活着的队员 → 有则转强制换宠；没有才整场结束（休闲复活）
   const alive = state.party.filter(p => p.uid !== state.active.uid && p.hp > 0);
   if (alive.length) {
@@ -253,8 +289,11 @@ function loseBattle() {
 // 捕捉成功嗨点
 function succeedCatch() {
   const caught = JSON.parse(JSON.stringify(battle.value?.wild ?? wild.value));
-  adoptPet(caught);
-  celebrate('catch', caught, '加入你的队伍！');
+  const adopted = adoptPet(caught);
+  // 新伙伴的灵魂在此刻诞生（persona 按 seed 掷点固化）
+  const soul = ensureSoul(adopted);
+  addEpisodic(soul, `在${mapInfo(caught.caughtMap ?? caught.caughtAt).name}与训练家相遇，被捕捉后加入了队伍。这是你们缘分的开始。`);
+  celebrate('catch', adopted, '加入你的队伍！');
   battle.value = null;
   wild.value = null;
   view.value = 'map';
