@@ -64,6 +64,7 @@ export const MAPS = [
 ];
 
 // 稀有度基础权重（会乘以地图 rarityBonus）
+// v2: 大幅压低 epic/legend —— 传说 0.03%→满 bonus 天穹也仅 ~0.18%
 export const BASE_RARITY_WEIGHT = {
-  common: 60, uncommon: 25, rare: 11, epic: 3.5, legend: 0.5,
+  common: 68, uncommon: 24, rare: 7, epic: 0.85, legend: 0.15,
 };

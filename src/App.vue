@@ -1,15 +1,16 @@
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue';
+import { ref, reactive, computed, onMounted, nextTick } from 'vue';
 import { save, showToast, spawnWild, adoptPet, party, withStats, gainExp, persist, rarityInfo, mapInfo, isMapUnlocked, mapLevelRange, llmConfig, saveLlmConfig, petByUid, celebration, closeCelebration, celebrate } from './store.js';
 import { MAPS } from './data/maps.js';
 import { petSvg } from './core/sprites.js';
-import { isLlmConfigured, generatePetWithLlm } from './core/llm.js';
+import { isLlmConfigured, generatePetWithLlm, tauntWithLlm, localTaunt } from './core/llm.js';
 import { newBattleState, battleTurn, catchChance } from './core/battle.js';
 import { statsAt } from './core/evolve.js';
 import { TYPE_COLORS } from './data/types.js';
 import { exportSaveText, importSaveText } from './storage.js';
 import Pet3D from './components/Pet3D.vue';
 import Celebration from './components/Celebration.vue';
+import PetDetail from './components/PetDetail.vue';
 
 const view = ref('map'); // map | encounter | battle | dex | settings
 const spawning = ref(false);
@@ -18,6 +19,10 @@ const battle = ref(null);
 const battleLog = ref([]);
 const battleBusy = ref(false);
 const lastExpGain = ref(0);
+// 详情弹窗 + 丢球限制
+const detailPet = ref(null);
+const ballsLeft = ref(5);        // 每只野生精灵限 5 次直接丢球
+const BALLS_MAX = 5;
 
 const petSvgOf = (pet, size) => petSvg(pet, size);
 const typeChipStyle = (t) => ({ background: TYPE_COLORS[t] ?? '#9fa19f' });
@@ -58,6 +63,7 @@ async function encounter(mapId) {
       }
     }
     wild.value = spawnWild(mapId, overrides);
+    ballsLeft.value = BALLS_MAX; // 新遭遇重置丢球次数
     view.value = 'encounter';
   } finally {
     spawning.value = false;
@@ -66,13 +72,25 @@ async function encounter(mapId) {
 
 function fleeWild() { wild.value = null; view.value = 'map'; }
 
-// 空手丢球（不依赖队伍）
+// 空手丢球（不依赖队伍）：每只野生精灵限 BALLS_MAX 次，越丢概率越低
 function throwDirect() {
+  if (ballsLeft.value <= 0) {
+    showToast('精灵球用完了！开战打残它再捕，或换只精灵刷新重置');
+    return;
+  }
   const target = withStats({ ...wild.value });
-  if (Math.random() < catchChance(target)) {
+  // 递减惩罚：第 N 次尝试概率 × (1 - 0.12N)，5 次内成功率显著衰减
+  const base = catchChance(target);
+  const penalty = Math.max(0.25, 1 - (BALLS_MAX - ballsLeft.value) * 0.12);
+  if (Math.random() < base * penalty) {
     succeedCatch();
   } else {
-    showToast(`${wild.value.name} 挣脱了精灵球！再试一次？`);
+    ballsLeft.value--;
+    if (ballsLeft.value <= 0) {
+      showToast(`${wild.value.name} 警觉起来了！球用完了——开战削弱它再捕吧`);
+    } else {
+      showToast(`${wild.value.name} 挣脱了精灵球！（剩余 ${ballsLeft.value} 次机会）`);
+    }
   }
 }
 
@@ -113,8 +131,37 @@ function playAnim(kind, who = null, text = null) {
   setTimeout(() => { anim.value = { who: null, kind: null }; }, 480);
 }
 
+// ---- 战斗吐槽（LLM 流式，可关；失败降级本地模板） ----
+const taunt = reactive({ text: '', who: null });
+let tauntAbort = null;
+function fireTaunt(attacker, defender, evt) {
+  if (!llmConfig.enabled || !isLlmConfigured(llmConfig)) {
+    taunt.text = localTaunt(attacker, defender, evt.moveName ?? '', evt.damage, evt.eff, evt.crit);
+    taunt.who = 'player';
+    setTimeout(() => { taunt.text = ''; }, 2600);
+    return;
+  }
+  tauntAbort?.abort();
+  tauntAbort = new AbortController();
+  taunt.text = ''; taunt.who = 'player';
+  tauntWithLlm(llmConfig, attacker, defender, evt.moveName ?? '攻击', evt.damage, evt.eff, tauntAbort.signal,
+    (delta) => { taunt.text += delta; })
+    .then(full => { taunt.text = full || taunt.text; setTimeout(() => { if (taunt.text === full) taunt.text = ''; }, 2600); })
+    .catch(() => {
+      taunt.text = localTaunt(attacker, defender, evt.moveName ?? '攻击', evt.damage, evt.eff, evt.crit);
+      setTimeout(() => { taunt.text = ''; }, 2600);
+    });
+}
+function fireTauntMiss(attacker, defender) {
+  taunt.text = localTaunt(attacker, defender, '', 0, 1, false) || '啊，打歪了…';
+  taunt.who = 'player';
+  setTimeout(() => { taunt.text = ''; }, 2200);
+}
+
 async function act(action) {
-  if (!battle.value || battleBusy.value || battle.value.ended) return;
+  // force=true 的换宠允许在 ended==='switch' 状态下执行
+  if (!battle.value || battleBusy.value) return;
+  if (battle.value.ended && action.force !== true) return;
   battleBusy.value = true;
   try {
     const state = battle.value;
@@ -125,10 +172,12 @@ async function act(action) {
     for (const e of events) {
       if (e.type === 'damage') {
         playAnim('hit', e.side === 'player' ? 'wild' : 'player', `-${e.damage}${e.crit ? ' 会心!' : ''}`);
+        if (e.side === 'player') fireTaunt(state.active, state.wild, e);
       } else if (e.type === 'heal') {
         playAnim('buff', e.side, `+${e.amount}`);
       } else if (e.type === 'buff' || e.type === 'miss') {
         playAnim('buff', e.side, e.type === 'miss' ? 'MISS!' : null);
+        if (e.type === 'miss' && e.side === 'player') fireTauntMiss(state.active, state.wild);
       } else if (e.type === 'faint') {
         playAnim('faint', e.side);
       }
@@ -138,7 +187,7 @@ async function act(action) {
     if (state.ended === 'caught') succeedCatch();
     else if (state.ended === 'win') winBattle();
     else if (state.ended === 'lose') loseBattle();
-    // ended === 'switch'：等待玩家选择换宠
+    // ended === 'switch'：等待玩家选择换宠（force-switch 面板显示）
   } catch (err) {
     console.error('act 失败', err);
     window.__lastActError = err?.stack ?? String(err);
@@ -179,10 +228,18 @@ function loseBattle() {
   const state = battle.value;
   const mine = petByUid(state.active.uid) ?? state.active;
   gainExp(mine, 10 + mine.level * 2);
-  // 全队原地复活
+  // 检查是否还有活着的队员 → 有则转强制换宠；没有才整场结束（休闲复活）
+  const alive = state.party.filter(p => p.uid !== state.active.uid && p.hp > 0);
+  if (alive.length) {
+    state.ended = 'switch';
+    battleLog.value.push({ type: 'status', text: `${state.active.name} 倒下了，请选择下一只精灵！` });
+    showToast(`${state.active.name} 倒下了！换其他精灵继续战斗`);
+    return; // 保持 battle 状态，force-switch 面板出现
+  }
+  // 全军覆没：休闲模式原地满血复活
   for (const p of save.pets) p.hp = undefined;
   persist();
-  showToast('战败了…精灵们休息了一会儿又满血复活（休闲模式）');
+  showToast('全军覆没…精灵们休息了一会儿又满血复活（休闲模式）');
   battle.value = null;
   wild.value = null;
   view.value = 'map';
@@ -199,7 +256,10 @@ function succeedCatch() {
 }
 
 function switchPet(partyIndex) {
-  act({ type: 'switch', partyIndex });
+  // 允许在 ended==='switch'（强制换宠）状态下执行
+  if (!battle.value || battleBusy.value) return;
+  if (battle.value.ended && battle.value.ended !== 'switch') return;
+  act({ type: 'switch', partyIndex, force: true });
 }
 
 // ---- 图鉴/队伍 ----
@@ -319,7 +379,7 @@ onMounted(() => { view.value = 'map'; });
           <p class="lore">{{ wild.lore }}</p>
           <div class="actions">
             <button class="primary" @click="startBattle">开战（打残再捕更容易）</button>
-            <button class="primary ball" @click="throwDirect">直接丢球</button>
+            <button class="primary ball" :disabled="ballsLeft <= 0" @click="throwDirect">直接丢球{{ ballsLeft < BALLS_MAX ? `（剩${ballsLeft}）` : '' }}</button>
             <button class="ghost" @click="fleeWild">离开</button>
           </div>
         </div>
@@ -357,6 +417,14 @@ onMounted(() => { view.value = 'map'; });
           <p v-for="(e, i) in battleLog.slice(-5)" :key="i" :class="{ hl: e.type === 'faint' || (e.type === 'ball' && e.caught) }">{{ e.text }}</p>
         </div>
 
+        <!-- 战斗吐槽气泡（LLM 流式 / 本地模板） -->
+        <Transition name="taunt">
+          <div v-if="taunt.text" class="taunt-bubble">
+            <span class="taunt-who">{{ battle.active.name }}</span>
+            <span class="taunt-text">{{ taunt.text }}</span>
+          </div>
+        </Transition>
+
         <!-- 强制换宠 -->
         <div v-if="battle.ended === 'switch'" class="battle-actions force-switch">
           <p class="hint">哪只精灵继续战斗？</p>
@@ -385,7 +453,7 @@ onMounted(() => { view.value = 'map'; });
         <div v-if="!dexList.length" class="empty">还没有捕捉到精灵，去地图逛逛吧！</div>
         <div class="dex-grid">
           <div v-for="pet in dexList" :key="pet.uid" class="dex-card" :class="{ inParty: save.partyIds.includes(pet.uid) }"
-            @click="toggleParty(pet.uid)">
+            @click="detailPet = pet">
             <div class="dex-sprite"><img :src="petSnapshot(pet)" :alt="pet.name" width="84" height="84" loading="lazy" /></div>
             <div class="dex-info">
               <strong>{{ pet.name }} <small v-if="pet.phase" class="phase-badge">{{ pet.phase }}阶</small></strong>
@@ -393,7 +461,7 @@ onMounted(() => { view.value = 'map'; });
                 <i v-for="t in pet.types" :key="t" class="chip sm" :style="typeChipStyle(t)">{{ t }}</i>
                 <i class="chip sm rarity-chip" :style="{ background: rarityInfo(pet.rarity).color }">{{ rarityInfo(pet.rarity).name }}</i>
               </div>
-              <span class="lv">Lv.{{ pet.level }}</span>
+              <span class="lv">Lv.{{ pet.level }} · 点击查看详情/聊天</span>
               <div class="exp-bar"><i :style="{ width: evExp(pet) + '%' }"></i></div>
               <div class="stats">
                 <span>HP {{ pet.maxHp }}</span><span>攻 {{ pet.atkStat }}</span><span>防 {{ pet.defStat }}</span><span>速 {{ pet.spdStat }}</span>
@@ -401,6 +469,10 @@ onMounted(() => { view.value = 'map'; });
               <p class="lore">{{ pet.lore }}</p>
             </div>
             <button class="release" @click.stop="releasePet(pet)" title="放归">✕</button>
+            <button class="party-toggle" :class="{ on: save.partyIds.includes(pet.uid) }"
+              @click.stop="toggleParty(pet.uid)" :title="save.partyIds.includes(pet.uid) ? '下阵' : '上阵'">
+              {{ save.partyIds.includes(pet.uid) ? '出战中' : '上阵' }}
+            </button>
           </div>
         </div>
       </section>
@@ -426,6 +498,9 @@ onMounted(() => { view.value = 'map'; });
         </div>
       </section>
     </main>
+
+    <!-- 宠物详情 + 聊天弹窗 -->
+    <PetDetail :pet="detailPet" @close="detailPet = null" />
 
     <!-- 全屏庆祝弹窗 -->
     <Celebration />

@@ -87,14 +87,31 @@ console.log(`✓ 遭遇野生精灵「${wildName}」，3D 画布已挂载`);
 await page.waitForTimeout(600);
 await page.screenshot({ path: 'test-results/encounter.png', fullPage: false });
 
-// 空手直接丢球（捕捉成功 => 庆祝弹窗）
+// 空手直接丢球（限 5 次/只 + 概率衰减；若 5 次没捕到则换目标验证限制生效）
+const ballBtn = page.locator('.encounter-view .ball');
 let caught = false;
-for (let i = 0; i < 25; i++) {
-  await page.getByRole('button', { name: '直接丢球' }).click();
+for (let i = 0; i < 5; i++) {
+  if (await ballBtn.isDisabled()) break; // 球用完
+  await ballBtn.click();
   await page.waitForTimeout(350);
   if (!(await page.locator('.encounter-view').count())) { caught = true; break; }
 }
-if (!caught) throw new Error('25 次直接丢球全部失败（概率异常）');
+if (!caught) {
+  // 球用完了 → 验证禁用 + 提示，然后离开重新遭遇再试（新版机制）
+  const disabled = await ballBtn.isDisabled();
+  if (!disabled) throw new Error('5 次丢球失败后按钮应禁用');
+  console.log('✓ 丢球限制生效（5 次后禁用，防无限重试）');
+  await page.getByRole('button', { name: '离开' }).click();
+  await page.locator('.map-card').nth(0).click();
+  await page.locator('.wild-card').waitFor({ timeout: 8000 });
+  for (let i = 0; i < 5; i++) {
+    if (await ballBtn.isDisabled()) break;
+    await ballBtn.click();
+    await page.waitForTimeout(350);
+    if (!(await page.locator('.encounter-view').count())) { caught = true; break; }
+  }
+  if (!caught) throw new Error('10 次丢球全部失败');
+}
 const banner = await dismissCelebration();
 if (!banner?.includes('捕捉成功')) throw new Error(`弹窗文案异常: ${banner}`);
 console.log(`✓ 捕捉庆祝弹窗（${banner.trim()}，星爆+3D 展示）`);
@@ -155,7 +172,21 @@ const save = JSON.parse(saveRaw);
 if (save.counters.encounters < 2) throw new Error('遭遇计数异常');
 console.log(`✓ 存档持久化（遭遇 ${save.counters.encounters}，捕获 ${save.counters.caught}，胜场 ${save.counters.battlesWon}）`);
 
-// 设置视图
+// ============ 详情弹窗验证：点击图鉴卡片 → 详情 + 聊天面板 ============
+await page.locator('.dex-card').first().click();
+await page.locator('.detail-card').waitFor({ timeout: 3000 });
+const detailName = await page.locator('.detail-meta h2').textContent();
+if (!detailName?.trim()) throw new Error('详情弹窗没有精灵名');
+const chatPanel = await page.locator('.chat-panel').count();
+if (chatPanel !== 1) throw new Error('聊天面板缺失');
+const chatInputDisabled = await page.locator('.chat-input input').isDisabled();
+console.log(`✓ 详情弹窗（${detailName.trim().slice(0, 6)}）+ 聊天面板（输入框${chatInputDisabled ? '未配置AI禁用' : '可用'}）`);
+await page.screenshot({ path: 'test-results/pet-detail.png', fullPage: false });
+await page.locator('.detail-close').click();
+await page.waitForTimeout(400);
+if (await page.locator('.detail-card').count()) throw new Error('详情弹窗未关闭');
+
+// ============ 设置视图 ============
 await page.getByRole('button', { name: /设置/ }).click();
 await page.locator('.settings-view').waitFor({ timeout: 3000 });
 if ((await page.locator('.settings-view input[type="checkbox"]').count()) !== 1) throw new Error('LLM 开关缺失');

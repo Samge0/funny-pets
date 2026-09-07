@@ -69,7 +69,7 @@ function execMove(src, dst, move, isPlayer, events) {
     else if (r.eff >= 2) text += '效果超级拔群！';
     else if (r.eff > 1) text += '效果拔群！';
     else if (r.eff < 1 && r.eff > 0) text += '效果不太理想…';
-    events.push({ type: 'damage', side: isPlayer ? 'player' : 'wild', damage: r.damage, eff: r.eff, crit: r.crit, text });
+    events.push({ type: 'damage', side: isPlayer ? 'player' : 'wild', damage: r.damage, eff: r.eff, crit: r.crit, moveName: move.name, text });
     if (dst.hp <= 0) {
       events.push({ type: 'faint', side: isPlayer ? 'wild' : 'player', text: `${dst.name}倒下了！` });
     }
@@ -121,6 +121,7 @@ export function battleTurn(state, playerAction) {
     const next = state.party[playerAction.partyIndex];
     events.push({ type: 'switch', side: 'player', text: `换上了${next.name}！` });
     state.active = next;
+    state.ended = null; // 强制换宠完成，恢复战斗
     execMove(wild, state.active, pickWildMove(wild), false, events);
     if (state.active.hp <= 0) {
       const another = state.party?.find(p => p.uid !== state.active.uid && p.hp > 0);
