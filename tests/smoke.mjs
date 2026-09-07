@@ -126,6 +126,8 @@ await page.locator('.fighter canvas').first().waitFor({ timeout: 8000 });
 
 let turnCount = 0;
 let battleDone = false;
+let forceSwitchSeen = false;
+let forceSwitchWorked = false;
 for (let i = 0; i < 90; i++) {
   // 庆祝弹窗出现 = 战斗结算完成
   if (await page.locator('.cele-mask').count()) { battleDone = true; break; }
@@ -133,7 +135,14 @@ for (let i = 0; i < 90; i++) {
   // 强制换宠
   if (await page.locator('.force-switch').count()) {
     const sw = page.locator('.force-switch .skill:not([disabled])');
-    if (await sw.count()) { await sw.first().click(); await page.waitForTimeout(500); continue; }
+    if (await sw.count()) {
+      forceSwitchSeen = true;
+      await sw.first().click();
+      await page.waitForTimeout(700);
+      // 点击后面板应消失（ended 清空恢复战斗）
+      if (await page.locator('.force-switch').count() === 0) forceSwitchWorked = true;
+      continue;
+    }
   }
   // 技能按钮（结算中会被禁用但保持显示）
   const skill = page.locator('.battle-actions .skill:not([disabled])').first();
@@ -150,6 +159,10 @@ if (!battleDone) {
   throw new Error(`90 轮未结束。turns=${turnCount} log: ${logText}`);
 }
 console.log(`✓ 战斗 ${turnCount} 回合走通，多回合节奏正常`);
+if (forceSwitchSeen) {
+  if (!forceSwitchWorked) throw new Error('强制换宠面板出现但点击后未恢复战斗（换宠失效）');
+  console.log('✓ 战败强制换宠：面板出现→点击队员→恢复战斗');
+}
 
 // 关闭结算弹窗（升级/进化），可能连续多个
 const b1 = await dismissCelebration();

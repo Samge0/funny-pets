@@ -88,11 +88,14 @@ function execMove(src, dst, move, isPlayer, events) {
   }
 }
 
-// playerAction: {type:'move',moveIndex} | {type:'switch',partyIndex} | {type:'ball'} | {type:'run'}
+// playerAction: {type:'move',moveIndex} | {type:'switch',partyIndex,force} | {type:'ball'} | {type:'run'}
 export function battleTurn(state, playerAction) {
   const events = [];
   const { active, wild } = state;
-  if (state.ended) return events;
+  // ended==='switch'（我方倒下待换宠）时，只允许 force 换宠通过
+  if (state.ended && !(state.ended === 'switch' && playerAction.type === 'switch' && playerAction.force)) {
+    return events;
+  }
 
   if (playerAction.type === 'move') {
     const myBase = active.moves[playerAction.moveIndex];
@@ -122,10 +125,12 @@ export function battleTurn(state, playerAction) {
     events.push({ type: 'switch', side: 'player', text: `换上了${next.name}！` });
     state.active = next;
     state.ended = null; // 强制换宠完成，恢复战斗
+    // 野生趁机攻击（换上来的精灵先挨打——符合宝可梦规则：换人后对方行动）
     execMove(wild, state.active, pickWildMove(wild), false, events);
     if (state.active.hp <= 0) {
       const another = state.party?.find(p => p.uid !== state.active.uid && p.hp > 0);
       state.ended = another ? 'switch' : 'lose';
+      events.push({ type: 'status', text: another ? `${state.active.name} 也倒下了！` : `${state.active.name} 倒下了，无宠可用…` });
     }
   } else if (playerAction.type === 'ball') {
     const p = catchChance(wild);

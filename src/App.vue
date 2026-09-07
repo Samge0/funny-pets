@@ -102,11 +102,16 @@ function startBattle() {
     showToast('队伍已休整完毕！');
     healthy.push(...party.value);
   }
-  const first = withStats({ ...healthy[0] });
-  if (first.hp == null || first.hp <= 0) first.hp = first.maxHp;
+  // 组建战斗队伍：存档中从未上场的宠物没有 hp 字段，按满血补齐
+  const battleParty = party.value.map(p => {
+    const copy = withStats({ ...p });
+    if (copy.hp == null || copy.hp <= 0) copy.hp = copy.maxHp;
+    return copy;
+  });
+  const first = battleParty.find(p => p.uid === healthy[0].uid) ?? battleParty[0];
   const wildFull = withStats({ ...wild.value });
   if (wildFull.hp == null || wildFull.hp <= 0) wildFull.hp = wildFull.maxHp;
-  battle.value = newBattleState(first, wildFull, party.value.map(p => withStats({ ...p })));
+  battle.value = newBattleState(first, wildFull, battleParty);
   battleLog.value = [];
   view.value = 'battle';
   playAnim('start');
