@@ -3,9 +3,10 @@
 </template>
 
 <script setup>
-// 复用单例 renderer 的 3D 精灵挂载组件：页面多处同时显示也不爆 WebGL context。
+// 复用 3D 精灵构建器：Toon 材质 + OutlineEffect 轮廓描边（v3）。
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
 import * as THREE from 'three';
+import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js';
 import { buildPet3D } from '../core/sprite3d.js';
 
 const props = defineProps({
@@ -15,22 +16,21 @@ const props = defineProps({
 });
 
 const mount = ref(null);
-let scene, camera, renderer, animId, pet3d;
+let scene, camera, renderer, effect, animId, pet3d;
 let raf = 0;
 const startT = performance.now();
 
-// 单例 renderer：所有实例共享一个 canvas? 不可行（不同位置），
-// 改为每实例 renderer 但上限受 图鉴虚拟化 控制；快照走离屏一次性。
 function init() {
   if (!mount.value) return;
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
-  camera.position.set(0, 1.1, 5.2);
-  camera.lookAt(0, 0.1, 0);
+  camera.position.set(0, 1.05, 5.4);
+  camera.lookAt(0, 0.05, 0);
 
-  scene.add(new THREE.AmbientLight(0xffffff, 1.1));
-  const key = new THREE.DirectionalLight(0xfff4e0, 1.6); key.position.set(2, 3, 4);
-  const rim = new THREE.DirectionalLight(0xbfd0ff, 0.8); rim.position.set(-3, 1.5, -2);
+  // Toon 二分色需要较强方向光
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const key = new THREE.DirectionalLight(0xfff4e0, 2.0); key.position.set(2, 3, 4);
+  const rim = new THREE.DirectionalLight(0xbfd0ff, 0.9); rim.position.set(-3, 1.5, -2);
   scene.add(key, rim);
 
   const built = buildPet3D(props.pet);
@@ -40,6 +40,14 @@ function init() {
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(props.size, props.size);
+
+  // 轮廓描边：卡通渲染的灵魂
+  effect = new OutlineEffect(renderer, {
+    defaultThickness: 0.0035,
+    defaultColor: [0.16, 0.16, 0.23],
+    defaultAlpha: 0.9,
+  });
+
   mount.value.appendChild(renderer.domElement);
 
   const loop = () => {
@@ -47,7 +55,7 @@ function init() {
     const t = (performance.now() - startT) / 1000;
     pet3d.update(t);
     if (props.idleSpin) pet3d.group.rotation.y += 0.004;
-    renderer.render(scene, camera);
+    effect.render(scene, camera);
   };
   loop();
 }
@@ -59,6 +67,7 @@ function dispose() {
     renderer.domElement?.remove();
     renderer = null;
   }
+  effect = null;
   scene?.traverse(obj => {
     if (obj.geometry) obj.geometry.dispose?.();
     if (obj.material) {

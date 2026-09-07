@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8" />
-<!-- 用 import map 把裸模块名 'three' 映射到本地构建产物 -->
+<!-- import map：把裸模块名 'three' 映射到本地构建产物 -->
 <script type="importmap">
 { "imports": { "three": "../node_modules/three/build/three.module.js" } }
 </script>
@@ -9,31 +9,48 @@
 <body>
 <script type="module">
   const { generatePet } = await import('../src/core/generator.js');
-  const { buildPet3D } = await import('../src/core/sprite3d.js');
-
-  const seeds = [20260907, 114523, 777001, 3061204, 51234];
-  const mapIds = ['meadow', 'shore', 'cave', 'volcano', 'peak'];
+  const { buildPet3D, bodyTypeBiased } = await import('../src/core/sprite3d.js');
+  const { OutlineEffect } = await import('../node_modules/three/examples/jsm/effects/OutlineEffect.js');
   const THREE = await import('three');
+
+  // 为宣传页挑 6 只不同体态的精灵（四足/双足/鸟禽/蛇形/水族/团子各一）
+  const wants = ['quadruped', 'bipedal', 'avian', 'serpent', 'aquatic', 'mochi'];
+  const picked = [];
+  for (let seed = 1; picked.length < wants.length && seed < 200000; seed++) {
+    const pet = generatePet(seed * 7919 + 13, 'meadow');
+    if (pet.rarity === 'legend') continue;
+    const bt = bodyTypeBiased(pet);
+    if (wants[picked.length] === bt) {
+      picked.push({ pet, bt, wantIndex: picked.length });
+    }
+  }
+
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setSize(220, 220);
   renderer.setClearColor(0x000000, 0);
   document.body.appendChild(renderer.domElement);
-  window.__results = [];
 
-  for (let i = 0; i < seeds.length; i++) {
-    const pet = generatePet(seeds[i], mapIds[i]);
+  const effect = new OutlineEffect(renderer, {
+    defaultThickness: 0.0035,
+    defaultColor: [0.16, 0.16, 0.23],
+    defaultAlpha: 0.9,
+  });
+
+  window.__results = [];
+  for (const { pet, bt } of picked) {
     const scene = new THREE.Scene();
     const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
-    cam.position.set(0, 1.1, 5.2); cam.lookAt(0, 0.1, 0);
-    scene.add(new THREE.AmbientLight(0xffffff, 1.1));
-    const key = new THREE.DirectionalLight(0xfff4e0, 1.6); key.position.set(2, 3, 4);
-    const rim = new THREE.DirectionalLight(0xbfd0ff, 0.8); rim.position.set(-3, 1.5, -2);
+    cam.position.set(0, 1.05, 5.4);
+    cam.lookAt(0, 0.05, 0);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const key = new THREE.DirectionalLight(0xfff4e0, 2.0); key.position.set(2, 3, 4);
+    const rim = new THREE.DirectionalLight(0xbfd0ff, 0.9); rim.position.set(-3, 1.5, -2);
     scene.add(key, rim);
     const { group, update } = buildPet3D(pet);
     scene.add(group); update(1.2);
-    renderer.render(scene, cam);
+    effect.render(scene, cam);
     const dataUrl = renderer.domElement.toDataURL('image/png');
-    window.__results.push({ name: pet.name, types: pet.types, rarity: pet.rarity, dataUrl });
+    window.__results.push({ name: pet.name, types: pet.types, rarity: pet.rarity, bodyType: bt, dataUrl });
   }
   window.__done = true;
 </script>

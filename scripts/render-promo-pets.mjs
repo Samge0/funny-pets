@@ -16,7 +16,7 @@ const runnerPath = join(root, 'scripts', 'promo-renderer.html');
 const runnerUrl = pathToFileURL(runnerPath).href;
 
 const browser = await chromium.launch({ args: ['--allow-file-access-from-files'] });
-const page = await browser.newPage();
+const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
 page.on('pageerror', e => console.log('PAGEERROR', e.message.slice(0, 300)));
 await page.goto(runnerUrl, { waitUntil: 'load' });
 await page.waitForFunction('window.__done === true', { timeout: 30000 });

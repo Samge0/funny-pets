@@ -51,15 +51,15 @@ async function dismissCelebration(timeout = 6000) {
 await page.goto(base, { waitUntil: 'networkidle' });
 if (!(await page.title()).includes('奇幻萌宠')) throw new Error('宣传页标题不对');
 const petCards = await page.locator('.pet-card').count();
-if (petCards !== 5) throw new Error(`精灵展示带 ${petCards} != 5`);
+if (petCards !== 6) throw new Error(`精灵展示带 ${petCards} != 6`);
 const petImgs = await page.locator('.pet-card img').count();
-if (petImgs !== 5) throw new Error(`3D 快照 img ${petImgs} != 5`);
+if (petImgs !== 6) throw new Error(`3D 快照 img ${petImgs} != 6`);
 // 确认快照图真实加载（非破图）
 const imgOk = await page.evaluate(() => [...document.querySelectorAll('.pet-card img')].every(i => i.complete && i.naturalWidth > 0));
 if (!imgOk) throw new Error('3D 快照 PNG 加载失败');
 const typeChips = await page.locator('.type-cloud .chip').count();
 if (typeChips !== 18) throw new Error(`属性云 ${typeChips} != 18`);
-console.log('✓ 宣传页：5 只 3D 快照精灵 + 18 属性云注入');
+console.log('✓ 宣传页：6 只 3D 体态快照精灵 + 18 属性云注入');
 
 await page.locator('#hero-play').click();
 await page.waitForURL('**/app/', { timeout: 5000 });

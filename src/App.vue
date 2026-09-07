@@ -24,14 +24,19 @@ const typeChipStyle = (t) => ({ background: TYPE_COLORS[t] ?? '#9fa19f' });
 
 // 图鉴快照缓存：seed+phase 相同直接复用 dataURL（避免几十个 WebGL context）
 const snapCache = new Map();
+async function renderSnapshotSafe(pet) {
+  try {
+    const { renderSnapshotOutlined } = await import('./core/snapshot.js');
+    return renderSnapshotOutlined(pet, 160);
+  } catch {
+    return petSvg(pet, 96);
+  }
+}
 function petSnapshot(pet) {
   const key = `${pet.seed}:${pet.phase ?? 0}`;
   if (!snapCache.has(key)) {
-    // 动态引入避免首屏加载 three 的离屏渲染
-    import('./core/sprite3d.js').then(({ renderSnapshot }) => {
-      snapCache.set(key, renderSnapshot(pet, 160));
-    }).catch(() => snapCache.set(key, petSvg(pet, 96)));
     snapCache.set(key, petSvg(pet, 96)); // 先占位，渲染完响应式刷新
+    renderSnapshotSafe(pet).then(url => snapCache.set(key, url));
   }
   return snapCache.get(key);
 }
