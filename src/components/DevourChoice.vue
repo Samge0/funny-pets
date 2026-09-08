@@ -29,14 +29,19 @@
           </div>
         </div>
 
-        <!-- 部件候选 -->
+        <!-- 部件候选：前后造型预览（SVG 渲染吞前/吞后的完整精灵形象） -->
         <div v-if="offer.parts.length" class="devour-section">
-          <h4>🎨 外观部件</h4>
+          <h4>🎨 外观部件（吞前 → 吞后预览）</h4>
           <div v-for="(pp, pi) in offer.parts" :key="pp.part + pp.theirs" class="devour-item">
             <label class="devour-take">
               <input type="checkbox" v-model="takePart[pi]" />
-              <span class="part-name">{{ partLabel(pp.part) }}：{{ pp.theirs }}</span>
-              <small>当前 {{ partLabel(pp.part) }}：{{ offer.currentLook[pp.part] ?? 'none' }}</small>
+              <span class="part-name">{{ partLabel(pp.part) }}</span>
+              <span class="part-preview">
+                <img class="preview-img" :src="previewSvg(pp.part, offer.currentLook[pp.part])" alt="吞前" width="56" height="56" />
+                <span class="preview-arrow">→</span>
+                <img class="preview-img after" :src="previewSvg(pp.part, pp.theirs)" alt="吞后" width="56" height="56" />
+              </span>
+              <small class="part-values">{{ valueLabel(pp.part, offer.currentLook[pp.part]) }} → {{ valueLabel(pp.part, pp.theirs) }}</small>
             </label>
           </div>
         </div>
@@ -55,10 +60,37 @@ import { reactive, watch, computed } from 'vue';
 import { offer, resolveOffer } from '../store.js';
 import { PART_LABELS } from '../core/evolve.js';
 import { TYPE_COLORS } from '../data/types.js';
+import { petSvg } from '../core/sprites.js';
 
 const takeMove = reactive([]);
 const takePart = reactive([]);
 const moveHow = reactive([]);
+
+// 部件候选值中文名（SVG 值池）
+const VALUE_LABELS = {
+  // ears/tail/accessory/pattern/eyes 与 traits.js 的 key 对齐
+  none: '无', round: '圆', pointy: '尖', long: '长', fin: '鳍',
+  stub: '短尾', curl: '卷尾', fluff: '绒尾', spark: '电尾',
+  flower: '小花', leaf: '叶芽', horn: '小角', gem: '额晶',
+  spots: '斑点', stripe: '条纹', belly: '肚皮',
+  dot: '豆豆眼', sleepy: '眯眯眼', sparkle: '星星眼',
+  round_body: '圆滚滚', pear: '梨形', tall: '瘦长', blob: '软团', drop: '水滴',
+};
+function valueLabel(part, v) {
+  if (v == null || v === 'none') return '无';
+  if (part === 'body') return VALUE_LABELS[v + '_body'] ?? v;
+  return VALUE_LABELS[v] ?? v;
+}
+
+/**
+ * 渲染吞前/吞后预览：把 offer 里的种子精灵 look 换成指定部件值后输出完整 SVG dataURL。
+ * offer.currentLook 已含精灵的其余维度（palette/body 等），保证预览与实际形象一致。
+ */
+function previewSvg(part, value) {
+  const look = { ...offer.currentLook, [part]: value };
+  const pet = { seed: offer.seed ?? 1, name: '预览', types: ['一般'], look };
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(petSvg(pet, 56));
+}
 
 // 每次新提案初始化勾选状态
 watch(() => offer.token, () => {
@@ -115,6 +147,11 @@ function confirmAll() {
 .devour-take small { color: #8a92a5; margin-left: auto; }
 .mv-name { font-weight: 700; border-left: 3px solid var(--type-color, #5b7fd4); padding-left: 6px; }
 .part-name { font-weight: 700; }
+.part-preview { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; }
+.preview-img { border-radius: 8px; border: 1px solid rgba(120,130,160,0.25); background: #f4f7fc; }
+.preview-img.after { border-color: rgba(232,134,44,0.55); background: #fdf4ec; }
+.preview-arrow { color: #b3541e; font-weight: 800; font-size: 13px; }
+.part-values { color: #8a92a5; font-size: 11px; text-align: right; }
 .devour-how { margin-top: 6px; padding-left: 24px; display: flex; flex-direction: column; gap: 3px; }
 .how-opt { font-size: 12px; color: #4a5262; display: flex; align-items: center; gap: 5px; cursor: pointer; }
 .devour-actions { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }

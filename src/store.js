@@ -25,11 +25,12 @@ export function persist() {
 }
 
 // ---- 全屏庆祝弹窗状态（捕捉/进化/升级共用） ----
-export const celebration = reactive({ show: false, kind: null, pet: null, detail: null });
-export function celebrate(kind, pet, detail = null) {
+export const celebration = reactive({ show: false, kind: null, pet: null, detail: null, statGains: null });
+export function celebrate(kind, pet, detail = null, statGains = null) {
   celebration.kind = kind;
   celebration.pet = pet;
   celebration.detail = detail;
+  celebration.statGains = statGains;
   celebration.show = true;
 }
 export function closeCelebration() {
@@ -37,6 +38,7 @@ export function closeCelebration() {
   celebration.kind = null;
   celebration.pet = null;
   celebration.detail = null;
+  celebration.statGains = null;
 }
 
 // ---- 吞噬提案（战利品弹窗）：胜利结算掷出 → 玩家在 DevourChoice 里自选 → 应用 ----
@@ -45,11 +47,12 @@ export const offer = reactive({
   token: 0,          // 每次新提案 +1，弹窗 watch 它重置勾选
   petUid: null,
   petName: '',
+  seed: 1,           // 预览 SVG 渲染用（花纹等 seed 维度）
   defeatedName: '',
   moves: [],         // 候选技能 [{name,power,type,effect}]
   parts: [],         // 候选部件 [{part, theirs}]
   currentMoves: [],  // 宠物当前技能（替换选项展示）
-  currentLook: {},   // 宠物当前 look
+  currentLook: {},   // 宠物当前 look（预览基准）
 });
 let offerResolve = null; // resolve 由 winBattle 挂起等待玩家确认
 

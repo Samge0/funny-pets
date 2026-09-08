@@ -101,6 +101,11 @@ function makeEyes(M, L, x0, y, z, scale = 1, withBrow = false) {
       lid.rotation.y = Math.PI / 2;
       lid.position.set(s * x0, y, z);
       g.add(lid);
+    } else if (L.eyes === 'dot') {
+      // 豆豆眼：纯黑小圆点，无白眼球（与圆眼明确区分）
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(r * 0.55, 10, 8), M.dark);
+      dot.position.set(s * x0, y, z);
+      g.add(dot);
     } else {
       const white = new THREE.Mesh(new THREE.SphereGeometry(r * 1.45, 14, 12), M.white);
       white.scale.z = 0.55;

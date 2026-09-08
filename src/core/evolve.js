@@ -97,12 +97,17 @@ export function applyDevour(pet, movePicks, partPicks) {
   for (const pick of partPicks) {
     const old = pet.look[pick.part];
     pet.look = { ...pet.look, [pick.part]: pick.theirs };
+    // 体型（body）在 3D 侧由 bodyType 驱动骨架：同步覆盖才能让吞来的体型真正生效
+    if (pick.part === 'body') {
+      const BODY_MAP = { round: 'mochi', pear: 'bipedal', tall: 'bipedal', blob: 'quadruped', drop: 'serpent' };
+      pet.bodyType = BODY_MAP[pick.theirs] ?? pet.bodyType;
+    }
     desc.push(`${PART_LABELS[pick.part] ?? pick.part}: ${old} → ${pick.theirs}`);
   }
   return desc;
 }
 
-// 部件中文名（弹窗展示）
+// 部件候选值中文名（弹窗展示）
 export const PART_LABELS = {
   ears: '耳朵', tail: '尾巴', accessory: '饰品',
   pattern: '花纹', eyes: '眼睛', body: '体型',
@@ -141,15 +146,15 @@ export function evolvePet(pet, phase) {
   };
 }
 
-// 升级结算：返回 {leveled, newMoves:[], evolvedTo, levels}
+// 升级结算：返回 {leveled, newMoves:[], evolvedTo, levels, statGains}
 export function applyExpGain(pet, amount) {
   pet.exp += amount;
-  const result = { leveled: false, levels: 0, newMoves: [], evolvedTo: null };
+  const result = { leveled: false, levels: 0, newMoves: [], evolvedTo: null, statGains: null };
   while (pet.level < 50 && pet.exp >= expForLevel(pet.level + 1)) {
     pet.level++;
     result.leveled = true;
     result.levels++;
-    // 每升 1 级：全部攻击技威力 +3、变化技效果增强（多段升级叠加成长）
+    // 每升 1 级：全部攻击技威力 +3（稳定成长）
     const upgradedNames = [];
     pet.moves = pet.moves.map(m => {
       if (!m.power) return m;
@@ -158,6 +163,16 @@ export function applyExpGain(pet, amount) {
       return nm;
     });
     if (upgradedNames.length) result.newMoves.push(...upgradedNames);
+    // 升级属性随机掷点（趣味性）：每级 4~8 点总量，随机分配到 HP/攻/防/速
+    if (!result.statGains) result.statGains = { hp: 0, atk: 0, def: 0, spd: 0 };
+    let pool = 4 + Math.floor(Math.random() * 5); // 4~8
+    const keys = ['hp', 'atk', 'def', 'spd'];
+    while (pool > 0) {
+      const k = keys[Math.floor(Math.random() * keys.length)];
+      const add = 1 + Math.floor(Math.random() * Math.min(3, pool)); // 1~3 点
+      result.statGains[k] += add;
+      pool -= add;
+    }
     const nextPhase = (pet.phase ?? 0) + 1;
     if (EVOLVE_AT[pet.phase ?? 0] !== undefined && pet.level >= EVOLVE_AT[pet.phase ?? 0] && (pet.phase ?? 0) < 2) {
       const evolved = evolvePet(pet, nextPhase);

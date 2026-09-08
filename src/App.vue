@@ -69,7 +69,12 @@ function petSnapshotKey(pet) {
 // ---- 刷新野生精灵 ----
 async function encounter(mapId) {
   const map = MAPS.find(m => m.id === mapId);
-  if (!isMapUnlocked(map)) { showToast(`捕捉满 ${map.unlockAt} 只后解锁「${map.name}」`); return; }
+  if (!isMapUnlocked(map)) {
+    // 解锁条件提示（GlobalToast 已恢复渲染；补充还差几只的具体进度）
+    const need = map.unlockAt - save.counters.caught;
+    showToast(`「${map.name}」尚未解锁：需要捕捉满 ${map.unlockAt} 只精灵，还差 ${need} 只（当前 ${save.counters.caught}/${map.unlockAt}）`, 3200);
+    return;
+  }
   spawning.value = true;
   wild.value = null;
   try {
@@ -312,7 +317,7 @@ async function winBattle() {
         onEvolve(soul, r.evolvedTo.name, r.evolvedTo.phase ?? 1);
         celebrate('evolve', r.evolvedTo, `进化成了 ${r.evolvedTo.name}！灵魂也成长了`);
       } else {
-        celebrate('levelup', mine, `${mine.name} 升到了 Lv.${mine.level}！获得 ${exp} 点经验`);
+        celebrate('levelup', mine, `${mine.name} 升到了 Lv.${mine.level}！获得 ${exp} 点经验`, r.statGains);
       }
       battle.value = null;
       wild.value = null;
@@ -320,6 +325,7 @@ async function winBattle() {
       const { movePicks, partPicks } = await requestDevourChoice({
         petUid: mine.uid,
         petName: mine.name,
+        seed: mine.seed,
         defeatedName: state.wild.name,
         moves: moveOffers,
         parts: partOffers,
@@ -350,7 +356,7 @@ async function winBattle() {
     const e = sharedEvolved[sharedEvolved.length - 1];
     celebrate('evolve', e, `队伍中的 ${e.name} 进化了！`);
   } else if (r.leveled) {
-    celebrate('levelup', mine, `${mine.name} 升到了 Lv.${mine.level}！${r.newMoves.length ? r.newMoves.join('，') : `获得 ${exp} 点经验`}`);
+    celebrate('levelup', mine, `${mine.name} 升到了 Lv.${mine.level}！${r.newMoves.length ? r.newMoves.join('，') : `获得 ${exp} 点经验`}`, r.statGains);
   } else {
     // 普通胜利也有弹窗（此前只发 toast，玩家常误以为赢了没反应）
     celebrate('win', mine, `${mine.name} 战胜了 ${state.wild.name}，+${exp} 经验`);
