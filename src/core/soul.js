@@ -129,6 +129,15 @@ export function getSoul(uid) {
   return all()[String(uid)] ?? null;
 }
 
+// 删除指定精灵的灵魂档案（放归时调用，避免 localStorage 孤儿数据）
+export function forgetSoul(uid) {
+  const store = all();
+  if (String(uid) in store) {
+    delete store[String(uid)];
+    saveAll();
+  }
+}
+
 export function updateSoul(uid, mutator) {
   const store = all();
   const key = String(uid);

@@ -29,13 +29,17 @@ export function validateSave(value) {
     if (!p || !Number.isSafeInteger(p.uid) || !Number.isSafeInteger(p.seed) || !Array.isArray(p.types)
       || !Array.isArray(p.moves) || !p.look || typeof p.look !== 'object'
       || !Number.isSafeInteger(p.level) || p.level < 1 || p.level > 50
-      || !Number.isSafeInteger(p.exp) || !Number.isSafeInteger(p.phase) || p.phase < 0 || p.phase > 2
+      || !Number.isSafeInteger(p.exp) || p.exp < 0 || p.exp > 1e12 || !Number.isSafeInteger(p.phase) || p.phase < 0 || p.phase > 2
       || typeof p.name !== 'string') throw new Error(`精灵数据无效 uid=${p?.uid}`);
     if (uids.has(p.uid)) throw new Error('uid 重复');
     uids.add(p.uid);
   }
   for (const id of value.partyIds) {
     if (!uids.has(id)) throw new Error('上阵列表包含未知 uid');
+  }
+  // nextUid 必须大于所有已有 uid，否则后续捕捉会发出重复 uid（精灵互相覆盖）
+  if (value.pets.length && value.nextUid <= Math.max(...value.pets.map(p => p.uid))) {
+    throw new Error('nextUid 与已有精灵 uid 冲突');
   }
   return value;
 }
@@ -44,7 +48,15 @@ export function readSave(notify) {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (raw === null) return emptySave();
-    return validateSave(JSON.parse(raw));
+    const value = JSON.parse(raw);
+    // 本地存档容错修复：nextUid 落后时自动追平（校验失败则整个重置太暴力，
+    // 手改存档/旧版本数据不应导致玩家数据丢失；导入路径仍走严格校验）
+    if (value && Array.isArray(value.pets) && value.pets.length
+      && Number.isSafeInteger(value.nextUid)
+      && value.nextUid <= Math.max(...value.pets.map(p => p?.uid ?? 0))) {
+      value.nextUid = Math.max(...value.pets.map(p => p.uid)) + 1;
+    }
+    return validateSave(value);
   } catch (error) {
     console.warn('读取存档失败', error);
     notify?.('存档读取失败，已重置。如需找回请勿覆盖导出文件。');
@@ -85,14 +97,26 @@ export function writeLlmConfig(cfg) {
   }
 }
 
-// 导出：带 magic 头的 JSON 文本，导入时校验
+// 清空全部游戏数据（存档 + 灵魂 + 聊天；key 统一在此管理，避免散落硬编码）
+export function clearAllStorage() {
+  localStorage.removeItem(SAVE_KEY);
+  localStorage.removeItem('funny-pets-souls-v1');
+  localStorage.removeItem('funny-pets-chats-v1');
+}
+
+// 导出：带 magic 头的 JSON 文本，导入时校验。
+// v2：附带灵魂档案与聊天记录（人格/羁绊/记忆随存档一起带走）
 const EXPORT_MAGIC = 'FUNPETS1';
-export function exportSaveText(save) {
-  return JSON.stringify({ magic: EXPORT_MAGIC, exportedAt: new Date().toISOString(), data: save }, null, 2);
+export function exportSaveText(save, extras = null) {
+  return JSON.stringify({ magic: EXPORT_MAGIC, exportedAt: new Date().toISOString(), data: save, ...(extras ?? {}) }, null, 2);
 }
 
 export function importSaveText(text) {
   const parsed = JSON.parse(text);
   if (parsed?.magic !== EXPORT_MAGIC) throw new Error('不是有效的奇幻萌宠存档文件');
-  return validateSave(parsed.data);
+  return {
+    save: validateSave(parsed.data),
+    souls: parsed.souls && typeof parsed.souls === 'object' ? parsed.souls : null,
+    chats: parsed.chats && typeof parsed.chats === 'object' ? parsed.chats : null,
+  };
 }

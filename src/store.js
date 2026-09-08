@@ -54,7 +54,8 @@ export function spawnWild(mapId, overrides = null) {
     hp: 1,
   };
   pet.hp = statsAt(pet, pet.level).hp;
-  save.dexSeen[seed] = 1;
+  // 图鉴计数按"这只精灵的 seed"记录：LLM 覆盖不会改变 seed，同 seed 重遇不重复计数
+  save.dexSeen[pet.seed] = 1;
   save.counters.encounters++;
   persist();
   return pet;
@@ -71,8 +72,15 @@ export function mapLevelRange(mapId) {
 }
 
 export function adoptPet(wild) {
+  // 防御：nextUid 落后于已有 uid（手改存档/旧版本数据）时先追平，避免 uid 冲突互相覆盖
+  const maxUid = save.pets.reduce((m, p) => Math.max(m, p.uid), 0);
+  if (save.nextUid <= maxUid) save.nextUid = maxUid + 1;
   const uid = save.nextUid++;
+  // 剥离战斗态字段：捕捉入档即满血新生（此前战斗中捕捉会带残血永久入档，
+  // 而游戏没有治疗机制——休闲设计为下场战斗自动满血，两者必须一致）
   const pet = { ...wild, uid };
+  delete pet.hp;
+  delete pet.boosts;
   save.pets.push(pet);
   save.counters.caught++;
   if (save.partyIds.length < 4) save.partyIds.push(uid);

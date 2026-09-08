@@ -33,6 +33,20 @@ export function chatOf(uid) {
   return store[uid];
 }
 
+// 落盘聊天缓存（供 PetDetail 等外部调用方在批量修改后持久化）
+export function persistChat() {
+  writeAll();
+}
+
+// 删除指定精灵的聊天记录（放归时调用，避免 localStorage 孤儿数据）
+export function forgetChat(uid) {
+  const store = all();
+  if (String(uid) in store) {
+    delete store[String(uid)];
+    writeAll();
+  }
+}
+
 export function appendChat(uid, role, content) {
   const c = chatOf(uid);
   c.messages.push({ role, content, t: Date.now() });
@@ -71,4 +85,17 @@ export function maybeCompress(uid, cfg, pet, soul) {
     c.compressedAt = c.total - since; // 回滚
     writeAll();
   });
+}
+
+// 导出所有聊天记录（与存档导出配套；此前 souls 有导出 API 而 chats 没有）
+export function exportChats() {
+  return JSON.parse(JSON.stringify(all()));
+}
+
+// 导入聊天记录（存档导入时恢复）
+export function importChats(data) {
+  if (data && typeof data === 'object') {
+    cache = JSON.parse(JSON.stringify(data));
+    writeAll();
+  }
 }
