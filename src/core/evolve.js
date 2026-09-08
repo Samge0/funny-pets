@@ -29,53 +29,85 @@ export function statsAt(pet, level) {
 export const EVOLVE_AT = [18, 36];
 
 // 技能升级表：进化时威力普适上调
-const MOVE_UPGRADE = { 40: 55, 45: 60, 50: 65, 55: 70, 70: 82, 75: 88, 80: 95 };
+// （v5）进化技能强化已并入 evolvePet：威力统一 +10，不再使用映射表
 
-function upgradeMove(move) {
-  if (!move.power) return move;
-  return { ...move, power: MOVE_UPGRADE[move.power] ?? move.power + 8 };
-}
+// ---- 升级吞噬：战利品提案模式 ----
+// 不直接修改宠物，而是返回候选列表（offer），由玩家在弹窗里自选哪些入手、替换谁。
+// 这样"替换权"在玩家手里：可以新增（技能不设上限）、可以换掉任意槽位。
 
-// ---- 升级吞噬：从我方视角吞掉战败对手的技能与外观部件 ----
-// 技能槽上限 4：吞噬时若已满则随机替换一个低威力攻击技（变化技优先被替换）
-export function devourMoves(pet, defeatedMoves) {
-  const gained = [];
-  for (const dm of defeatedMoves) {
-    if (Math.random() > 0.35) continue;         // 每技能 35% 吞噬概率
+// 每个战败对手技能的吞噬概率（提升到 60%：连续几场没吞会挫败）
+export const DEVOUR_MOVE_CHANCE = 0.6;
+// 每个外观部件的掠夺概率（提升到 55%）
+export const DEVOUR_PART_CHANCE = 0.55;
+
+// 可掠夺的外观维度（任意部件都能吞，让玩家自由拼装造型）
+const DEVOUR_PARTS = ['ears', 'tail', 'accessory', 'pattern', 'eyes', 'body'];
+
+/**
+ * 掷出本次升级可吞的技能候选（不含已学会的）。
+ * @returns 候选招式数组（浅拷贝）
+ */
+export function offerDevourMoves(pet, defeatedMoves) {
+  const offers = [];
+  for (const dm of defeatedMoves ?? []) {
+    if (Math.random() > DEVOUR_MOVE_CHANCE) continue;
     if (pet.moves.find(m => m.name === dm.name)) continue; // 已有同名跳过
-    if (pet.moves.length < 4) {
-      pet.moves.push({ ...dm });
-      gained.push(dm.name);
-    } else if (dm.power) {
-      // 槽满：找最弱的攻击技替换（保留至少 1 个攻击技）
-      const atkIdx = pet.moves.map((m, i) => ({ m, i })).filter(x => x.m.power).sort((a, b) => a.m.power - b.m.power);
-      if (atkIdx.length && atkIdx[0].m.power < dm.power) {
-        const oldName = pet.moves[atkIdx[0].i].name;
-        pet.moves[atkIdx[0].i] = { ...dm };
-        gained.push(`${dm.name}（替换了 ${oldName}）`);
-      }
-    }
+    offers.push({ ...dm });
   }
-  return gained;
+  return offers;
 }
 
-// ---- 升级吞噬（外观方向）：随机掠夺战败对手的部件（UI 建模长相） ----
-// look.ears/tail/accessory 三类可吞噬；palette 不抢（配色是身份）
-const DEVOUR_PARTS = ['ears', 'tail', 'accessory'];
-
-export function devourLook(pet, defeatedLook) {
-  const gained = [];
+/**
+ * 掷出本次升级可掠夺的外观部件候选（与自身同款或 none 的跳过）。
+ * @returns [{ part, theirs }] part ∈ look 字段名，theirs 为对手的值
+ */
+export function offerDevourParts(pet, defeatedLook) {
+  const offers = [];
   for (const part of DEVOUR_PARTS) {
     const theirs = defeatedLook?.[part];
-    if (!theirs || theirs === 'none') continue;                 // 对手没长这个部位
-    if (Math.random() > 0.3) continue;                          // 每部件 30% 掠夺概率
-    if (pet.look[part] === theirs) continue;                    // 同款跳过
-    const old = pet.look[part];
-    pet.look = { ...pet.look, [part]: theirs };
-    gained.push(`${part}: ${old} → ${theirs}`);
+    if (theirs == null || theirs === '' || theirs === 'none') continue; // 对手没长
+    if (pet.look?.[part] === theirs) continue;                          // 同款跳过
+    if (Math.random() > DEVOUR_PART_CHANCE) continue;
+    offers.push({ part, theirs });
   }
-  return gained;
+  return offers;
 }
+
+/**
+ * 应用玩家的吞噬选择（在弹窗确认后调用；此函数才是唯一改宠物的地方）。
+ * @param pet 目标宠物（会被修改）
+ * @param movePicks 要入手的技能名列表（新增或按 index 替换：{name, replaceIndex}）
+ * @param partPicks 要入手的部件 [{part, theirs}]
+ * @returns 描述文本数组（弹窗展示用）
+ */
+export function applyDevour(pet, movePicks, partPicks) {
+  const desc = [];
+  for (const pick of movePicks) {
+    if (typeof pick === 'number' || typeof pick === 'string') continue; // 防御
+    const mv = { ...pick.move };
+    if (pick.replaceIndex != null && pick.replaceIndex >= 0 && pick.replaceIndex < pet.moves.length) {
+      const old = pet.moves[pick.replaceIndex].name;
+      pet.moves[pick.replaceIndex] = mv;
+      desc.push(`${mv.name} 替换了 ${old}`);
+    } else {
+      pet.moves.push(mv); // 技能不设 4 个上限：可以一直新增
+      desc.push(`学会 ${mv.name}`);
+    }
+  }
+  for (const pick of partPicks) {
+    const old = pet.look[pick.part];
+    pet.look = { ...pet.look, [pick.part]: pick.theirs };
+    desc.push(`${PART_LABELS[pick.part] ?? pick.part}: ${old} → ${pick.theirs}`);
+  }
+  return desc;
+}
+
+// 部件中文名（弹窗展示）
+export const PART_LABELS = {
+  ears: '耳朵', tail: '尾巴', accessory: '饰品',
+  pattern: '花纹', eyes: '眼睛', body: '体型',
+};
+
 
 export function evolvePet(pet, phase) {
   if (phase === 0) return pet;
@@ -93,7 +125,8 @@ export function evolvePet(pet, phase) {
 
   // 技能：全部升级威力 + 50% 概率把最后一个槽替换为本属性更强的攻击技
   const pool = [...MOVES[pet.types[0]], ...(pet.types[1] ? MOVES[pet.types[1]] : [])];
-  const moves = pet.moves.map(upgradeMove);
+  // 进化跃升：现有技能威力 +10（叠加在每级 +3 之上），保持吞噬来的技能也受益
+  const moves = pet.moves.map(m => (m.power ? { ...m, power: m.power + 10 } : m));
   if (rng() < 0.5) {
     const stronger = pick(rng, pool.filter(m => m.power));
     if (!moves.find(m => m.name === stronger.name)) moves[moves.length - 1] = { ...stronger };
@@ -116,16 +149,15 @@ export function applyExpGain(pet, amount) {
     pet.level++;
     result.leveled = true;
     result.levels++;
-    // 升级 30% 概率随机强化一个技能（威力+6）
-    if (Math.random() < 0.3) {
-      const powered = pet.moves.map(m => ({ ...m, power: m.power ? m.power + 6 : null }));
-      const upgraded = powered.filter((m, i) => m.power && m.power !== pet.moves[i].power);
-      if (upgraded.length) {
-        const m = upgraded[0];
-        result.newMoves.push(`${m.name} 威力提升至 ${m.power}`);
-        pet.moves = powered;
-      }
-    }
+    // 每升 1 级：全部攻击技威力 +3、变化技效果增强（多段升级叠加成长）
+    const upgradedNames = [];
+    pet.moves = pet.moves.map(m => {
+      if (!m.power) return m;
+      const nm = { ...m, power: m.power + 3 };
+      upgradedNames.push(`${nm.name} ${m.power}→${nm.power}`);
+      return nm;
+    });
+    if (upgradedNames.length) result.newMoves.push(...upgradedNames);
     const nextPhase = (pet.phase ?? 0) + 1;
     if (EVOLVE_AT[pet.phase ?? 0] !== undefined && pet.level >= EVOLVE_AT[pet.phase ?? 0] && (pet.phase ?? 0) < 2) {
       const evolved = evolvePet(pet, nextPhase);

@@ -1,13 +1,13 @@
 <script setup>
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue';
-import { save, showToast, spawnWild, adoptPet, party, withStats, gainExp, persist, rarityInfo, mapInfo, isMapUnlocked, mapLevelRange, llmConfig, saveLlmConfig, petByUid, celebration, closeCelebration, celebrate } from './store.js';
+import { save, showToast, spawnWild, adoptPet, party, withStats, gainExp, persist, rarityInfo, mapInfo, isMapUnlocked, mapLevelRange, llmConfig, saveLlmConfig, petByUid, celebration, closeCelebration, celebrate, requestDevourChoice } from './store.js';
 import { MAPS } from './data/maps.js';
 import { petSvg } from './core/sprites.js';
 import { isLlmConfigured, generatePetWithLlm, tauntWithSoul, localTaunt } from './core/llm.js';
 import { ensureSoul, updateSoul, driftTraits, touchRelation, addEpisodic, onEvolve, forgetSoul } from './core/soul.js';
 import { forgetChat } from './chat.js';
 import { newBattleState, battleTurn, catchChance } from './core/battle.js';
-import { statsAt, devourMoves, devourLook } from './core/evolve.js';
+import { statsAt, offerDevourMoves, offerDevourParts, applyDevour } from './core/evolve.js';
 import { TYPE_COLORS } from './data/types.js';
 import { exportSaveText, importSaveText, clearAllStorage } from './storage.js';
 import { exportSouls, importSouls } from './core/soul.js';
@@ -15,6 +15,8 @@ import { exportChats, importChats } from './chat.js';
 import Pet3D from './components/Pet3D.vue';
 import Celebration from './components/Celebration.vue';
 import PetDetail from './components/PetDetail.vue';
+import DevourChoice from './components/DevourChoice.vue';
+import GlobalToast from './components/GlobalToast.vue';
 
 const view = ref('map'); // map | encounter | battle | dex | settings
 const spawning = ref(false);
@@ -269,7 +271,7 @@ async function act(action) {
   }
 }
 
-function winBattle() {
+async function winBattle() {
   const state = battle.value;
   const mine = petByUid(state.active.uid) ?? state.active;
   ensureSoul(mine);
@@ -296,14 +298,44 @@ function winBattle() {
       }
     }
   }
-  // 升级吞噬：主战精灵每升 1 级掷一次吞噬（吞对手技能 + 外观部件）
+  // 升级吞噬：主战精灵每升 1 级掷一次吞噬候选（技能 60%、部件 55%）。
+  // 不再自动替换——候选交给玩家在弹窗里自选（新增 or 替换谁）。
   let devourDesc = '';
   if (r.levels > 0) {
-    const gainedMoves = devourMoves(mine, state.wild.moves ?? []);
-    const gainedParts = devourLook(mine, state.wild.look);
-    if (gainedMoves.length || gainedParts.length) {
-      devourDesc = [gainedMoves.length ? `吞噬技能：${gainedMoves.join('、')}` : '', gainedParts.length ? `掠夺部件：${gainedParts.join('、')}` : ''].filter(Boolean).join('；');
-      addEpisodic(ensureSoul(mine), `击败了${state.wild.name}，吞噬了它的${gainedMoves.join('、') || '外型特征'}，感觉更强了。`);
+    const moveOffers = offerDevourMoves(mine, state.wild.moves ?? []);
+    const partOffers = offerDevourParts(mine, state.wild.look);
+    if (moveOffers.length || partOffers.length) {
+      // 先弹庆祝窗，关掉后再弹吞噬选择（顺序体验：先知道升级，再分配战利品）
+      if (r.evolvedTo) {
+        save.counters.evolutions++;
+        const soul = ensureSoul(r.evolvedTo);
+        onEvolve(soul, r.evolvedTo.name, r.evolvedTo.phase ?? 1);
+        celebrate('evolve', r.evolvedTo, `进化成了 ${r.evolvedTo.name}！灵魂也成长了`);
+      } else {
+        celebrate('levelup', mine, `${mine.name} 升到了 Lv.${mine.level}！获得 ${exp} 点经验`);
+      }
+      battle.value = null;
+      wild.value = null;
+      view.value = 'map';
+      const { movePicks, partPicks } = await requestDevourChoice({
+        petUid: mine.uid,
+        petName: mine.name,
+        defeatedName: state.wild.name,
+        moves: moveOffers,
+        parts: partOffers,
+        currentMoves: mine.moves.map(m => ({ name: m.name, power: m.power })),
+        currentLook: { ...mine.look },
+      });
+      if (movePicks.length || partPicks.length) {
+        const desc = applyDevour(mine, movePicks, partPicks);
+        devourDesc = desc.join('；');
+        if (desc.length) {
+          addEpisodic(ensureSoul(mine), `吞噬了${state.wild.name}的${desc.length}处特征：${desc.slice(0, 3).join('、')}${desc.length > 3 ? '…' : ''}。更强了！`);
+          showToast(`${mine.name} 吞噬成功！${devourDesc}`, 3600);
+        }
+      }
+      persist();
+      return; // 庆祝+吞噬流程已完整走完（含 view 切换），不走下方公共出口
     }
   }
   persist();
@@ -318,10 +350,7 @@ function winBattle() {
     const e = sharedEvolved[sharedEvolved.length - 1];
     celebrate('evolve', e, `队伍中的 ${e.name} 进化了！`);
   } else if (r.leveled) {
-    celebrate('levelup', mine, `${mine.name} 升到了 Lv.${mine.level}！${devourDesc || (r.newMoves.length ? r.newMoves.join('，') : `获得 ${exp} 点经验`)}`);
-  } else if (devourDesc) {
-    // 吞噬可以独立于升级发生？不——吞噬以升级为前提。此处兜底理论上不可达，保留防御
-    celebrate('win', mine, devourDesc);
+    celebrate('levelup', mine, `${mine.name} 升到了 Lv.${mine.level}！${r.newMoves.length ? r.newMoves.join('，') : `获得 ${exp} 点经验`}`);
   } else {
     // 普通胜利也有弹窗（此前只发 toast，玩家常误以为赢了没反应）
     celebrate('win', mine, `${mine.name} 战胜了 ${state.wild.name}，+${exp} 经验`);
@@ -646,6 +675,12 @@ onMounted(() => { view.value = 'map'; });
 
     <!-- 宠物详情 + 聊天弹窗 -->
     <PetDetail :pet="detailPet" @close="detailPet = null" />
+
+    <!-- 吞噬选择弹窗（升级战利品） -->
+    <DevourChoice />
+
+    <!-- 全局轻提示 -->
+    <GlobalToast />
 
     <!-- 全屏庆祝弹窗 -->
     <Celebration />

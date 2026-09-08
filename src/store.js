@@ -39,6 +39,37 @@ export function closeCelebration() {
   celebration.detail = null;
 }
 
+// ---- 吞噬提案（战利品弹窗）：胜利结算掷出 → 玩家在 DevourChoice 里自选 → 应用 ----
+export const offer = reactive({
+  show: false,
+  token: 0,          // 每次新提案 +1，弹窗 watch 它重置勾选
+  petUid: null,
+  petName: '',
+  defeatedName: '',
+  moves: [],         // 候选技能 [{name,power,type,effect}]
+  parts: [],         // 候选部件 [{part, theirs}]
+  currentMoves: [],  // 宠物当前技能（替换选项展示）
+  currentLook: {},   // 宠物当前 look
+});
+let offerResolve = null; // resolve 由 winBattle 挂起等待玩家确认
+
+/**
+ * 请求玩家做出吞噬选择（在 winBattle 内 await）。
+ * 返回 {movePicks, partPicks}；玩家直接关闭弹窗则两个数组为空。
+ */
+export function requestDevourChoice(payload) {
+  Object.assign(offer, payload, { show: true, token: offer.token + 1 });
+  return new Promise(resolve => { offerResolve = resolve; });
+}
+
+/** DevourChoice 确认/跳过时回调：应用选择并关闭弹窗 */
+export function resolveOffer(movePicks, partPicks) {
+  offer.show = false;
+  const r = offerResolve;
+  offerResolve = null;
+  r?.({ movePicks, partPicks });
+}
+
 // ---- 精灵生命周期 ----
 
 export function spawnWild(mapId, overrides = null) {
