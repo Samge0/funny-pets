@@ -624,6 +624,33 @@ export function buildPet3D(pet) {
       tongue.position.set(0, -headR * 0.3, headR * 1.3);
       headGroup.add(tongue);
     }
+    // 吞噬/外观部件挂载：蛇形骨架补齐 ears/accessory
+    headGroup.add(makeEars(M, L, headR, -1), makeEars(M, L, headR, 1));
+    if (L.accessory === 'gem') {
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.09), toonMat(new THREE.Color(0x7fd4e8)));
+      gem.position.set(0, headR * 0.9, headR * 0.6);
+      headGroup.add(gem);
+    } else if (L.accessory === 'flower') {
+      for (let p = 0; p < 5; p++) {
+        const petal = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), toonMat(new THREE.Color(0xe87a9a)));
+        const a = (p / 5) * Math.PI * 2;
+        petal.position.set(Math.cos(a) * 0.07, headR * 0.95, Math.sin(a) * 0.07 + headR * 0.55);
+        headGroup.add(petal);
+      }
+      const core = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), toonMat(new THREE.Color(0xf4d03c)));
+      core.position.set(0, headR * 0.95, headR * 0.55);
+      headGroup.add(core);
+    } else if (L.accessory === 'leaf') {
+      const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), toonMat(new THREE.Color(0x5a9830)));
+      leaf.scale.set(0.3, 0.75, 1);
+      leaf.rotation.z = 0.5;
+      leaf.position.set(0.05, headR * 1.0, headR * 0.45);
+      headGroup.add(leaf);
+    } else if (L.accessory === 'horn') {
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.26, 8), M.type);
+      horn.position.set(0, headR * 1.05, headR * 0.3);
+      headGroup.add(horn);
+    }
     root.add(headGroup);
     parts.head = headGroup;
 
@@ -703,6 +730,34 @@ export function buildPet3D(pet) {
         bubble.material = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
         root.add(bubble);
       }
+    }
+
+    // 吞噬/外观部件挂载：水族骨架补齐 ears/accessory（挂在头部两侧与头顶）
+    headGroup.add(makeEars(M, L, headR, -1), makeEars(M, L, headR, 1));
+    if (L.accessory === 'gem') {
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.09), toonMat(new THREE.Color(0x7fd4e8)));
+      gem.position.set(0, headR * 0.9, headR * 0.5);
+      headGroup.add(gem);
+    } else if (L.accessory === 'flower') {
+      for (let p = 0; p < 5; p++) {
+        const petal = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), toonMat(new THREE.Color(0xe87a9a)));
+        const a = (p / 5) * Math.PI * 2;
+        petal.position.set(Math.cos(a) * 0.07, headR * 0.95, Math.sin(a) * 0.07 + headR * 0.4);
+        headGroup.add(petal);
+      }
+      const core = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), toonMat(new THREE.Color(0xf4d03c)));
+      core.position.set(0, headR * 0.95, headR * 0.4);
+      headGroup.add(core);
+    } else if (L.accessory === 'leaf') {
+      const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), toonMat(new THREE.Color(0x5a9830)));
+      leaf.scale.set(0.3, 0.75, 1);
+      leaf.rotation.z = 0.5;
+      leaf.position.set(0.05, headR * 1.0, headR * 0.35);
+      headGroup.add(leaf);
+    } else if (L.accessory === 'horn') {
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.26, 8), M.type);
+      horn.position.set(0, headR * 1.1, headR * 0.2);
+      headGroup.add(horn);
     }
 
     group.add(root);

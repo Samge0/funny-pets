@@ -51,12 +51,17 @@ function petSvgDataUrl(pet) {
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(petSvg(pet, 96));
 }
 function petSnapshot(pet) {
-  const key = `${pet.seed}:${pet.phase ?? 0}`;
+  // look 参与缓存 key：吞噬/进化改变部件后快照必须重新渲染（旧 key 只有 seed:phase 会命中陈旧缓存）
+  const key = petSnapshotKey(pet);
   if (!snapCache.has(key)) {
     snapCache.set(key, petSvgDataUrl(pet)); // 先占位，渲染完响应式刷新
     renderSnapshotSafe(pet).then(url => { if (url) snapCache.set(key, url); });
   }
   return snapCache.get(key);
+}
+function petSnapshotKey(pet) {
+  const lookSig = `${pet.look.ears}-${pet.look.tail}-${pet.look.accessory}-${pet.look.pattern}`;
+  return `${pet.seed}:${pet.phase ?? 0}:${lookSig}`;
 }
 
 // ---- 刷新野生精灵 ----
@@ -314,8 +319,12 @@ function winBattle() {
     celebrate('evolve', e, `队伍中的 ${e.name} 进化了！`);
   } else if (r.leveled) {
     celebrate('levelup', mine, `${mine.name} 升到了 Lv.${mine.level}！${devourDesc || (r.newMoves.length ? r.newMoves.join('，') : `获得 ${exp} 点经验`)}`);
+  } else if (devourDesc) {
+    // 吞噬可以独立于升级发生？不——吞噬以升级为前提。此处兜底理论上不可达，保留防御
+    celebrate('win', mine, devourDesc);
   } else {
-    showToast(`战斗胜利，${mine.name} +${exp} 经验`);
+    // 普通胜利也有弹窗（此前只发 toast，玩家常误以为赢了没反应）
+    celebrate('win', mine, `${mine.name} 战胜了 ${state.wild.name}，+${exp} 经验`);
   }
   battle.value = null;
   wild.value = null;
@@ -590,7 +599,7 @@ onMounted(() => { view.value = 'map'; });
         <div class="dex-grid">
           <div v-for="pet in dexList" :key="pet.uid" class="dex-card" :class="{ inParty: save.partyIds.includes(pet.uid) }"
             @click="detailPet = pet">
-            <div class="dex-sprite"><img :src="petSnapshot(pet)" :alt="pet.name" width="84" height="84" loading="lazy" /></div>
+            <div class="dex-sprite"><img :key="petSnapshotKey(pet)" :src="petSnapshot(pet)" :alt="pet.name" width="84" height="84" loading="lazy" /></div>
             <div class="dex-info">
               <strong>{{ pet.name }} <small v-if="pet.phase" class="phase-badge">{{ pet.phase }}阶</small></strong>
               <div class="chips">

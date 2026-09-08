@@ -10,7 +10,7 @@
       <div class="cele-card" :class="'kind-' + celebration.kind" @click.stop>
         <div class="cele-banner">{{ bannerText }}</div>
         <div class="cele-sprite" v-if="celebration.pet">
-          <Pet3D :pet="displayPet" :size="200" />
+          <Pet3D :key="modelTag" :pet="displayPet" :size="200" />
         </div>
         <h2 class="cele-name">{{ celebration.pet?.name }}</h2>
         <div class="cele-chips" v-if="celebration.pet">
@@ -38,13 +38,20 @@ const bannerText = computed(() => ({
   catch: '🎉 捕捉成功！',
   evolve: '✨ 进化了！',
   levelup: '⬆️ 等级提升！',
+  win: '🎉 战斗胜利！',
 }[celebration.kind] ?? ''));
 
-// 弹窗内展示带进化形态与实时数值
+// 弹窗内展示带进化形态与实时数值。
+// snapshotTag：吞噬/进化改变 look 后给 Pet3D 换 key 强制重建 3D 模型（否则 props.pet 引用不变不触发重建）
 const displayPet = computed(() => celebration.pet ? withStats(celebration.pet) : null);
+const modelTag = computed(() => {
+  if (!celebration.pet) return '0';
+  const l = celebration.pet.look ?? {};
+  return `${celebration.pet.seed}:${celebration.pet.phase ?? 0}:${l.ears}-${l.tail}-${l.accessory}-${l.pattern}`;
+});
 
 const starCount = computed(() => ({
-  catch: 18, evolve: 26, levelup: 12,
+  catch: 18, evolve: 26, levelup: 12, win: 14,
 }[celebration.kind] ?? 14));
 
 function starStyle(i) {

@@ -6,7 +6,7 @@
       <div class="detail-card">
         <button class="detail-close" @click="close">✕</button>
         <div class="detail-top">
-          <div class="detail-sprite"><Pet3D :pet="pet" :size="140" /></div>
+          <div class="detail-sprite"><Pet3D :key="modelTag" :pet="pet" :size="140" /></div>
           <div class="detail-meta">
             <h2>{{ pet.name }} <small v-if="pet.phase" class="phase-badge">{{ pet.phase }}阶</small></h2>
             <div class="chips">
@@ -92,6 +92,12 @@ const typingText = ref('');
 const msgsEl = ref(null);
 
 const pet = computed(() => props.pet);
+// look 变化（吞噬部件）→ 换 key 强制重建 3D 模型
+const modelTag = computed(() => {
+  if (!props.pet) return '0';
+  const l = props.pet.look ?? {};
+  return `${props.pet.seed}:${props.pet.phase ?? 0}:${l.ears}-${l.tail}-${l.accessory}-${l.pattern}`;
+});
 // soul 从 soul.js 实时取（详情打开期间好感/记忆变化要反映到 UI）
 const soul = computed(() => (props.pet ? ensureSoul(props.pet) : null));
 const chat = computed(() => (props.pet ? chatOf(props.pet.uid) : { messages: [], total: 0 }));
