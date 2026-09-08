@@ -29,6 +29,7 @@ watch(battleLog, () => {
   nextTick(() => { if (logEl.value) logEl.value.scrollTop = logEl.value.scrollHeight; });
 }, { deep: false });
 const battleBusy = ref(false);
+const showSwitchPanel = ref(false); // 战斗中主动换宠面板（非强制）
 const lastExpGain = ref(0);
 // 详情弹窗 + 丢球限制
 const detailPet = ref(null);
@@ -145,6 +146,7 @@ function startBattle() {
   if (wildFull.hp == null || wildFull.hp <= 0) wildFull.hp = wildFull.maxHp;
   battle.value = newBattleState(first, wildFull, battleParty);
   battleLog.value = [];
+  showSwitchPanel.value = false; // 新战斗重置主动换宠面板
   view.value = 'battle';
   playAnim('start');
 }
@@ -433,6 +435,31 @@ const dexList = computed(() => save.pets.map(p => withStats(p)));
 const totalSeen = computed(() => Object.keys(save.dexSeen).length);
 const collectionGoal = 30;
 
+// 图鉴拖动排序：拖起记录 uid，落到目标卡上时在 save.pets 中移动位置并持久化
+const dragPetUid = ref(null);
+function onDragStart(pet, e) {
+  dragPetUid.value = pet.uid;
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', String(pet.uid)); } catch { /* Safari 兜底 */ }
+}
+function onDragOver(pet, e) {
+  if (dragPetUid.value == null || dragPetUid.value === pet.uid) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+}
+function onDrop(pet, e) {
+  e.preventDefault();
+  const fromUid = dragPetUid.value;
+  dragPetUid.value = null;
+  if (fromUid == null || fromUid === pet.uid) return;
+  const from = save.pets.findIndex(p => p.uid === fromUid);
+  const to = save.pets.findIndex(p => p.uid === pet.uid);
+  if (from < 0 || to < 0) return;
+  save.pets.splice(to, 0, save.pets.splice(from, 1)[0]); // 移动到目标位置
+  persist();
+  showToast('图鉴顺序已更新');
+}
+
 function toggleParty(uid) {
   const i = save.partyIds.indexOf(uid);
   if (i >= 0) save.partyIds.splice(i, 1);
@@ -621,15 +648,27 @@ onMounted(() => { view.value = 'map'; });
 
         <!-- 常规操作：win/lose 结算动画期间按钮禁用但保持显示，避免按钮区塌陷跳版 -->
         <div class="battle-actions" v-else-if="!battle.ended || battle.ended === 'win' || battle.ended === 'lose'">
-          <button v-for="(mv, i) in battle.active.moves" :key="mv.name" class="skill" :disabled="battleBusy || !!battle.ended"
+          <button v-for="(mv, i) in battle.active.moves" :key="mv.name" class="skill" :disabled="battleBusy || !!battle.ended || showSwitchPanel"
             :style="{ '--type-color': typeChipStyle(mv.type ?? battle.active.types[0]).background }"
             @click="act({ type: 'move', moveIndex: i })">
             {{ mv.name }}<small>{{ mv.power ? `威力 ${mv.power}` : '变化' }}</small>
           </button>
-          <button class="ball" :disabled="battleBusy || !!battle.ended" @click="act({ type: 'ball' })">
+          <button class="ball" :disabled="battleBusy || !!battle.ended || showSwitchPanel" @click="act({ type: 'ball' })">
             丢球 <small>{{ Math.round(catchChance(battle.wild) * 100) }}%</small>
           </button>
-          <button class="ghost" :disabled="battleBusy || !!battle.ended" @click="act({ type: 'run' })">逃跑</button>
+          <button class="switch-toggle" :disabled="battleBusy || !!battle.ended" @click="showSwitchPanel = !showSwitchPanel" title="切换出战精灵（换上后对方会趁机攻击）">
+            换宠 <small>{{ battle.party.filter(p => p.hp > 0 && p.uid !== battle.active.uid).length }} 只可用</small>
+          </button>
+          <button class="ghost" :disabled="battleBusy || !!battle.ended || showSwitchPanel" @click="act({ type: 'run' })">逃跑</button>
+        </div>
+
+        <!-- 主动换宠面板（非强制：点「换宠」展开；选择后 wild 趁机攻击，符合宝可梦规则） -->
+        <div v-if="!battle.ended && showSwitchPanel" class="battle-actions force-switch">
+          <p class="hint">换上哪只精灵？（换宠会消耗本回合，对方趁机攻击）</p>
+          <button v-for="(p, i) in battle.party" :key="p.uid" class="skill" :disabled="p.hp <= 0 || p.uid === battle.active.uid" @click="showSwitchPanel = false; switchPet(i)">
+            {{ p.name }} <small>{{ p.hp > 0 ? `HP ${p.hp}/${p.maxHp}` : '已倒下' }}</small>
+          </button>
+          <button class="ghost" @click="showSwitchPanel = false">取消</button>
         </div>
 
         <!-- 战报（固定高度可滚动，新纪录自动滚到底，不再推挤按钮） -->
@@ -640,10 +679,11 @@ onMounted(() => { view.value = 'map'; });
 
       <!-- ============ 图鉴 ============ -->
       <section v-else-if="view === 'dex'" class="dex-view">
-        <p class="hint">已遇见 {{ totalSeen }} 种 · 已捕捉 {{ save.pets.length }}/{{ collectionGoal }} · 上阵 {{ save.partyIds.length }}/4（点击卡片切换上阵）</p>
+        <p class="hint">已遇见 {{ totalSeen }} 种 · 已捕捉 {{ save.pets.length }}/{{ collectionGoal }} · 上阵 {{ save.partyIds.length }}/4（点击卡片切换上阵 · 拖动卡片排序）</p>
         <div v-if="!dexList.length" class="empty">还没有捕捉到精灵，去地图逛逛吧！</div>
         <div class="dex-grid">
-          <div v-for="pet in dexList" :key="pet.uid" class="dex-card" :class="{ inParty: save.partyIds.includes(pet.uid) }"
+          <div v-for="pet in dexList" :key="pet.uid" class="dex-card" :class="{ inParty: save.partyIds.includes(pet.uid), dragging: dragPetUid === pet.uid }"
+            draggable="true" @dragstart="onDragStart(pet, $event)" @dragover="onDragOver(pet, $event)" @drop="onDrop(pet, $event)" @dragend="dragPetUid = null"
             @click="detailPet = pet">
             <div class="dex-sprite"><img :key="petSnapshotKey(pet)" :src="petSnapshot(pet)" :alt="pet.name" width="84" height="84" loading="lazy" /></div>
             <div class="dex-info">

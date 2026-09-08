@@ -195,6 +195,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .skill small { display: block; color: var(--text-dim); font-size: 11px; }
 .battle-actions .ball { background: #4caf88; color: #fff; border: none; min-width: 96px; }
 .battle-actions .ball small { opacity: 0.9; display: block; font-size: 11px; }
+.battle-actions .switch-toggle { background: #5b7fd4; color: #fff; border: none; min-width: 96px; }
+.battle-actions .switch-toggle small { opacity: 0.9; display: block; font-size: 11px; }
 .battle-actions .ghost { background: transparent; }
 .battle-actions .primary { background: var(--primary); color: #fff; border: none; }
 
@@ -207,6 +209,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   cursor: pointer; transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 .dex-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.dex-card[draggable="true"] { -webkit-user-drag: element; user-select: none; }
+.dex-card.dragging { opacity: 0.45; transform: scale(0.97); }
 .dex-card.inParty { border-color: var(--primary); background: linear-gradient(180deg, rgba(91,127,212,0.10), rgba(255,255,255,0.72)); }
 .dex-card.inParty::after { content: '出战'; position: absolute; top: 8px; right: 30px; font-size: 10px; color: var(--primary-deep); border: 1px solid var(--primary); padding: 1px 6px; border-radius: 8px; }
 .dex-sprite { flex-shrink: 0; width: 84px; height: 84px; background: radial-gradient(circle at 50% 60%, rgba(91,127,212,0.1), transparent 70%); border-radius: 12px; }

@@ -132,6 +132,33 @@ function makeEyes(M, L, x0, y, z, scale = 1, withBrow = false) {
 }
 
 // 小獠牙（嘴角两侧微露）
+// 身体花纹（正面可见版）：斑点画在身体前侧面、条纹用胸前横带——
+// 保证从正面相机（z+ 方向）看吞来的 spots/stripe 一眼可辨
+function makeBodyPattern(M, L, radius, opts = {}) {
+  const g = new THREE.Group();
+  const y0 = opts.y0 ?? 0;
+  if (L.pattern === 'spots') {
+    const n = opts.spots ?? 4;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 1.1 - Math.PI * 0.55; // 仅前侧扇区
+      const spot = new THREE.Mesh(new THREE.SphereGeometry(radius * (0.16 + (i % 2) * 0.05), 10, 8), M.accent);
+      // 贴在体表外：沿球面方向放到 1.02×radius 处（不同骨架身体半径不同，由调用方传准）
+      spot.position.set(Math.sin(a) * radius * 0.95, y0 + (i % 2 - 0.5) * radius * 0.85, Math.abs(Math.cos(a)) * radius * 0.55 + radius * 0.42);
+      spot.scale.z = 0.5;
+      g.add(spot);
+    }
+  } else if (L.pattern === 'stripe') {
+    const n = opts.stripes ?? 3;
+    for (let i = 0; i < n; i++) {
+      const band = new THREE.Mesh(new THREE.TorusGeometry(radius * (0.85 - i * 0.1), radius * 0.07, 8, 20, Math.PI), M.accent);
+      band.rotation.x = Math.PI / 2;
+      band.position.set(0, y0 + (i - (n - 1) / 2) * radius * 0.5, 0);
+      g.add(band);
+    }
+  }
+  return g;
+}
+
 function makeFangs(M, y, z, scale = 1) {
   const g = new THREE.Group();
   for (const x of [-0.14 * scale, 0.14 * scale]) {
@@ -432,6 +459,8 @@ export function buildPet3D(pet) {
       belly.position.set(0, -0.05, 0.32);
       root.add(belly);
     }
+    // 花纹（bipedal 此前只有 belly——spots/stripe 吞了完全看不出）
+    root.add(makeBodyPattern(M, L, 0.5));
 
     // 大头（精灵感的关键比例）
     const headGroup = new THREE.Group();
@@ -451,20 +480,21 @@ export function buildPet3D(pet) {
       }
     }
     headGroup.add(makeEars(M, L, headR, -1), makeEars(M, L, headR, 1));
+    // 配饰统一尺寸/前移挂点：正面相机下一眼可辨（吞噬反馈关键）
     if (L.accessory === 'gem') {
-      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.1), toonMat(new THREE.Color(0x7fd4e8)));
-      gem.position.set(0, headR * 0.85, headR * 0.4);
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.13), toonMat(new THREE.Color(0x7fd4e8)));
+      gem.position.set(0, headR * 0.9, headR * 0.62);
       headGroup.add(gem);
     }
     if (L.accessory === 'flower') {
       for (let p = 0; p < 5; p++) {
-        const petal = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), toonMat(new THREE.Color(0xe87a9a)));
+        const petal = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 8), toonMat(new THREE.Color(0xe87a9a)));
         const a = (p / 5) * Math.PI * 2;
-        petal.position.set(Math.cos(a) * 0.08, headR * 0.95, Math.sin(a) * 0.08);
+        petal.position.set(Math.cos(a) * 0.09, headR * 0.98, Math.sin(a) * 0.09 + headR * 0.2);
         headGroup.add(petal);
       }
-      const core = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), toonMat(new THREE.Color(0xf4d03c)));
-      core.position.set(0, headR * 0.95, 0);
+      const core = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), toonMat(new THREE.Color(0xf4d03c)));
+      core.position.set(0, headR * 0.98, headR * 0.2);
       headGroup.add(core);
     }
     if (L.accessory === 'leaf') {
@@ -517,6 +547,8 @@ export function buildPet3D(pet) {
     belly.scale.set(0.8, 1.05, 0.5);
     belly.position.set(0, -0.05, 0.3);
     root.add(belly);
+    // 花纹（avian 此前无 spots/stripe 渲染）
+    root.add(makeBodyPattern(M, L, 0.45));
 
     // 头小圆 + 潒 + 头冠
     const headGroup = new THREE.Group();
@@ -782,6 +814,8 @@ export function buildPet3D(pet) {
     belly.scale.set(0.95, 0.8, 0.5);
     belly.position.set(0, -0.22, 0.42);
     root.add(belly);
+    // 花纹（mochi 此前无 spots/stripe 渲染）
+    root.add(makeBodyPattern(M, L, 0.5, { y0: 0.12 }));
 
     // 脸直接长在身上（无独立头）
     const faceY = 0.18;
