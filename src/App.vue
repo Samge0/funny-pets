@@ -305,21 +305,25 @@ async function winBattle() {
       }
     }
   }
-  // 升级吞噬：主战精灵每升 1 级掷一次吞噬候选（技能 60%、部件 55%）。
-  // 不再自动替换——候选交给玩家在弹窗里自选（新增 or 替换谁）。
+  // 吞噬：每场胜利都掷（升级=满档 60%/55%，未升级=常驻档 35%/30%）。
+  // 之前只在升级时掷——高等级几十场升一级，吞噬体验极度匮乏。
+  // 候选交给玩家在弹窗里自选（新增 or 替换谁）。
   let devourDesc = '';
-  if (r.levels > 0) {
-    const moveOffers = offerDevourMoves(mine, state.wild.moves ?? []);
-    const partOffers = offerDevourParts(mine, state.wild.look);
+  {
+    const luck = r.levels > 0 ? 'levelup' : 'flat';
+    const moveOffers = offerDevourMoves(mine, state.wild.moves ?? [], luck);
+    const partOffers = offerDevourParts(mine, state.wild.look, luck);
     if (moveOffers.length || partOffers.length) {
-      // 先弹庆祝窗，关掉后再弹吞噬选择（顺序体验：先知道升级，再分配战利品）
+      // 先弹庆祝窗，关掉后再弹吞噬选择（顺序体验：先知道战果，再分配战利品）
       if (r.evolvedTo) {
         save.counters.evolutions++;
         const soul = ensureSoul(r.evolvedTo);
         onEvolve(soul, r.evolvedTo.name, r.evolvedTo.phase ?? 1);
         celebrate('evolve', r.evolvedTo, `进化成了 ${r.evolvedTo.name}！灵魂也成长了`);
-      } else {
+      } else if (r.leveled) {
         celebrate('levelup', mine, `${mine.name} 升到了 Lv.${mine.level}！获得 ${exp} 点经验`, r.statGains);
+      } else {
+        celebrate('win', mine, `${mine.name} 战胜了 ${state.wild.name}，+${exp} 经验`);
       }
       battle.value = null;
       wild.value = null;
@@ -646,8 +650,9 @@ onMounted(() => { view.value = 'map'; });
         <!-- 强制换宠 -->
         <div v-if="battle.ended === 'switch'" class="battle-actions force-switch">
           <p class="hint">哪只精灵继续战斗？</p>
-          <button v-for="(p, i) in battle.party" :key="p.uid" class="skill" :disabled="p.hp <= 0 || p.uid === battle.active.uid" @click="switchPet(i)">
-            {{ p.name }} <small>{{ p.hp > 0 ? `HP ${p.hp}/${p.maxHp}` : '已倒下' }}</small>
+          <button v-for="(p, i) in battle.party" :key="p.uid" class="skill switch-opt" :disabled="p.hp <= 0 || p.uid === battle.active.uid" @click="switchPet(i)">
+            <img class="switch-avatar" :src="petSnapshot(p)" :alt="p.name" width="44" height="44" />
+            <span class="switch-meta">{{ p.name }}<small>{{ p.hp > 0 ? `HP ${p.hp}/${p.maxHp}` : '已倒下' }}</small></span>
           </button>
         </div>
 
@@ -670,8 +675,9 @@ onMounted(() => { view.value = 'map'; });
         <!-- 主动换宠面板（非强制：点「换宠」展开；选择后 wild 趁机攻击，符合宝可梦规则） -->
         <div v-if="!battle.ended && showSwitchPanel" class="battle-actions force-switch">
           <p class="hint">换上哪只精灵？（换宠会消耗本回合，对方趁机攻击）</p>
-          <button v-for="(p, i) in battle.party" :key="p.uid" class="skill" :disabled="p.hp <= 0 || p.uid === battle.active.uid" @click="showSwitchPanel = false; switchPet(i)">
-            {{ p.name }} <small>{{ p.hp > 0 ? `HP ${p.hp}/${p.maxHp}` : '已倒下' }}</small>
+          <button v-for="(p, i) in battle.party" :key="p.uid" class="skill switch-opt" :disabled="p.hp <= 0 || p.uid === battle.active.uid" @click="showSwitchPanel = false; switchPet(i)">
+            <img class="switch-avatar" :src="petSnapshot(p)" :alt="p.name" width="44" height="44" />
+            <span class="switch-meta">{{ p.name }}<small>{{ p.hp > 0 ? `HP ${p.hp}/${p.maxHp}` : '已倒下' }}</small></span>
           </button>
           <button class="ghost" @click="showSwitchPanel = false">取消</button>
         </div>

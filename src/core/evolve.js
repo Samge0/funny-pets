@@ -39,18 +39,24 @@ export const EVOLVE_AT = [18, 36];
 export const DEVOUR_MOVE_CHANCE = 0.6;
 // 每个外观部件的掠夺概率（提升到 55%）
 export const DEVOUR_PART_CHANCE = 0.55;
+// 非升级胜利的常驻吞噬概率（升级前吞噬只在升级时掷——高等级几十场升一级，
+// 吞噬体验极度匮乏；改为每场胜利都掷：升级时用上面满档，未升级用这里的常驻档）
+export const DEVOUR_MOVE_CHANCE_FLAT = 0.35;
+export const DEVOUR_PART_CHANCE_FLAT = 0.3;
 
 // 可掠夺的外观维度（任意部件都能吞，让玩家自由拼装造型）
 const DEVOUR_PARTS = ['ears', 'tail', 'accessory', 'pattern', 'eyes', 'body'];
 
 /**
- * 掷出本次升级可吞的技能候选（不含已学会的）。
+ * 掷出本场胜利可吞的技能候选（不含已学会的）。
+ * @param luck 'levelup'=升级满档概率 | 'flat'=常驻档（每场胜利都有机会）
  * @returns 候选招式数组（浅拷贝）
  */
-export function offerDevourMoves(pet, defeatedMoves) {
+export function offerDevourMoves(pet, defeatedMoves, luck = 'levelup') {
+  const chance = luck === 'flat' ? DEVOUR_MOVE_CHANCE_FLAT : DEVOUR_MOVE_CHANCE;
   const offers = [];
   for (const dm of defeatedMoves ?? []) {
-    if (Math.random() > DEVOUR_MOVE_CHANCE) continue;
+    if (Math.random() > chance) continue;
     if (pet.moves.find(m => m.name === dm.name)) continue; // 已有同名跳过
     offers.push({ ...dm });
   }
@@ -58,16 +64,18 @@ export function offerDevourMoves(pet, defeatedMoves) {
 }
 
 /**
- * 掷出本次升级可掠夺的外观部件候选（与自身同款或 none 的跳过）。
+ * 掷出本场胜利可掠夺的外观部件候选（与自身同款或 none 的跳过）。
+ * @param luck 'levelup'=升级满档概率 | 'flat'=常驻档
  * @returns [{ part, theirs }] part ∈ look 字段名，theirs 为对手的值
  */
-export function offerDevourParts(pet, defeatedLook) {
+export function offerDevourParts(pet, defeatedLook, luck = 'levelup') {
+  const chance = luck === 'flat' ? DEVOUR_PART_CHANCE_FLAT : DEVOUR_PART_CHANCE;
   const offers = [];
   for (const part of DEVOUR_PARTS) {
     const theirs = defeatedLook?.[part];
     if (theirs == null || theirs === '' || theirs === 'none') continue; // 对手没长
     if (pet.look?.[part] === theirs) continue;                          // 同款跳过
-    if (Math.random() > DEVOUR_PART_CHANCE) continue;
+    if (Math.random() > chance) continue;
     offers.push({ part, theirs });
   }
   return offers;

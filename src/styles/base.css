@@ -188,6 +188,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .battle-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 .battle-actions.force-switch { flex-direction: column; align-items: center; }
+/* 换宠选项：头像 + 名称/HP 纵排 */
+.switch-opt { display: flex; align-items: center; gap: 10px; min-width: 220px; text-align: left; }
+.switch-avatar { width: 44px; height: 44px; border-radius: 10px; background: radial-gradient(circle at 50% 60%, rgba(91,127,212,0.12), transparent 70%); object-fit: contain; }
+.switch-meta { display: flex; flex-direction: column; line-height: 1.35; }
+.switch-meta small { color: var(--text-dim); font-size: 11px; }
 .skill {
   min-width: 116px; background: rgba(255, 255, 255, 0.92);
   border-left: 4px solid var(--type-color, var(--primary));
