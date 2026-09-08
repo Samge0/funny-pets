@@ -33,17 +33,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Add CNAME file (custom domain, optional)
-        # 预留自定义域名：在 repo Settings → Secrets and variables → Actions 配置
-        # CUSTOM_CNAME 后自动生效；未配置时跳过，避免写入空 CNAME 覆盖已有绑定
-        run: |
-          if [ -n "${{ secrets.CUSTOM_CNAME }}" ]; then
-            echo "${{ secrets.CUSTOM_CNAME }}" > dist/CNAME
-            echo "CNAME set to: ${{ secrets.CUSTOM_CNAME }}"
-          else
-            echo "CUSTOM_CNAME not set, skip CNAME file"
-          fi
-
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:

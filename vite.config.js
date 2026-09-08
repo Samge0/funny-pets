@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 // 注意：游戏内部资产引用基于 base '/funny-pets/'，所以 app 入口的 html 放在
 // app/index.html 且使用相对资源路径由 Vite 重写；base 保持仓库名。
 export default defineConfig({
-  base: '/funny-pets/',
+  base: './',
   plugins: [vue()],
   build: {
     target: 'es2020',
