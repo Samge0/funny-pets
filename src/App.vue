@@ -591,7 +591,7 @@ onMounted(() => { view.value = 'map'; });
       <section v-else-if="view === 'encounter' && wild" class="encounter-view">
         <div class="wild-card" :style="{ '--rarity': rarityInfo(wild.rarity).color }">
           <div class="wild-sprite3d">
-            <Pet3D :pet="wild" :size="200" />
+            <Pet3D :pet="wild" :size="200" drag-mode="panY" />
           </div>
           <h2>{{ wild.name }} <small class="lv">Lv.{{ wild.level }}</small></h2>
           <div class="chips">
@@ -617,12 +617,12 @@ onMounted(() => { view.value = 'map'; });
               <div class="hp-bar"><i :style="{ width: Math.max(0, battle.wild.hp / battle.wild.maxHp * 100) + '%' }" :class="{ low: battle.wild.hp / battle.wild.maxHp < 0.25 }"></i></div>
               <span class="hp-num">{{ battle.wild.hp }} / {{ battle.wild.maxHp }}</span>
             </div>
-            <div class="fighter-model"><Pet3D :pet="battle.wild" :size="130" /></div>
+            <div class="fighter-model"><Pet3D :pet="battle.wild" :size="130" drag-mode="panY" /></div>
           </div>
           <div class="vs">⚡</div>
           <!-- 我方（右） -->
           <div class="fighter mine" :class="{ attacking: anim.who === 'player' && anim.kind === 'attack', hit: anim.who === 'player' && anim.kind === 'hit', fainting: anim.who === 'player' && anim.kind === 'faint' }">
-            <div class="fighter-model"><Pet3D :pet="battle.active" :size="130" /></div>
+            <div class="fighter-model"><Pet3D :pet="battle.active" :size="130" drag-mode="panY" /></div>
             <div class="plate">
               <div class="plate-row"><strong>{{ battle.active.name }}</strong><span>Lv.{{ battle.active.level }}</span></div>
               <div class="hp-bar"><i :style="{ width: Math.max(0, battle.active.hp / battle.active.maxHp * 100) + '%' }" :class="{ low: battle.active.hp / battle.active.maxHp < 0.25 }"></i></div>

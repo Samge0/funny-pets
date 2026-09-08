@@ -90,9 +90,10 @@ function materials(pet) {
   };
 }
 
-// 眼睛（所有体态共用；可选眉毛）
+// 眼睛（所有体态共用；可选眉毛）。返回组带 userData.blink = true：Pet3D 眨眼动画按 scaleY 压扁
 function makeEyes(M, L, x0, y, z, scale = 1, withBrow = false) {
   const g = new THREE.Group();
+  g.userData.blink = true;
   const r = 0.1 * L.eyeSize * scale;
   for (const s of [-1, 1]) {
     if (L.eyes === 'sleepy') {
@@ -157,6 +158,18 @@ function makeBodyPattern(M, L, radius, opts = {}) {
     }
   }
   return g;
+}
+
+// 腿关节：把腿网格包进 pivot 组（pivot 在髋部，腿网格相对下移），
+// 之后 Pet3D 旋转 pivot.x 即抬腿/踢腿。返回 pivot（调用方 add 到 root 并收集到 parts.legs）
+function makeLegJoint(buildMesh, hipX, hipY, hipZ) {
+  const pivot = new THREE.Group();
+  pivot.position.set(hipX, hipY, hipZ);
+  const mesh = buildMesh();
+  mesh.position.set(0, mesh.position.y - hipY, mesh.position.z - hipZ);
+  mesh.position.x = 0;
+  pivot.add(mesh);
+  return pivot;
 }
 
 function makeFangs(M, y, z, scale = 1) {
@@ -293,7 +306,7 @@ export function buildPet3D(pet) {
 
   const group = new THREE.Group();
   const sway = { amp: 0.05 + rng() * 0.04, speed: 0.7 + rng() * 0.5 };
-  const parts = { wings: [], tail: null, head: null, bodyRoot: null, halo: null };
+  const parts = { wings: [], tail: null, head: null, bodyRoot: null, halo: null, legs: [], eyes: null };
 
   // ---- 各体态骨架 ----
   if (bodyType === 'quadruped') buildQuadruped();
@@ -326,7 +339,6 @@ export function buildPet3D(pet) {
     if (parts.head) parts.head.rotation.z = Math.sin(t * 1.1) * 0.06;
     if (parts.halo) { parts.halo.rotation.z = t * 1.2; }
   };
-
   // =============== 骨架实现 ===============
 
   // 四足兽：横放椭球躯干 + 前伸颈 + 圆头 + 4 条两段腿
@@ -358,7 +370,7 @@ export function buildPet3D(pet) {
     snout.scale.set(1.3, 0.7, 0.8);
     snout.position.set(headR * 0.85, -headR * 0.15, 0);
     headGroup.add(snout);
-    headGroup.add(makeEyes(M, L, headR * 0.45, headR * 0.2, headR * 0.75, 0.9, L.brow));
+    headGroup.add(parts.eyes = makeEyes(M, L, headR * 0.45, headR * 0.2, headR * 0.75, 0.9, L.brow));
     headGroup.add(makeMouth(M, L, -headR * 0.35, headR * 0.9, 0.8));
     if (L.fangPair) headGroup.add(makeFangs(M, -headR * 0.42, headR * 0.85, 0.8));
     if (L.cheek) {
@@ -388,19 +400,23 @@ export function buildPet3D(pet) {
     neck.rotation.z = 0.7;
     root.add(neck);
 
-    // 4 条腿：上腿+下腿两段（腿长随机）
+    // 4 条腿：上腿+下腿两段（腿长随机）——每条腿整体包关节组（髋部 pivot，可抬腿/踏步）
     const legY1 = -0.42, legY2 = -0.42 - 0.3 * L.legLen, footY = -0.86 * L.legLen - 0.14 * (1 - L.legLen);
     const legGeo1 = new THREE.CapsuleGeometry(0.1, 0.26 * L.legLen, 4, 10);
     const legGeo2 = new THREE.CapsuleGeometry(0.085, 0.22 * L.legLen, 4, 10);
     for (const [lx, lz] of [[0.42, 0.28], [0.42, -0.28], [-0.42, 0.28], [-0.42, -0.28]]) {
+      const hip = new THREE.Group();
+      hip.position.set(lx, legY1, lz);
       const upper = new THREE.Mesh(legGeo1, M.body);
-      upper.position.set(lx, legY1, lz);
+      upper.position.set(0, 0, 0);
       const lower = new THREE.Mesh(legGeo2, M.accent);
-      lower.position.set(lx, legY2, lz + 0.03);
+      lower.position.set(0, legY2 - legY1, 0.03);
       const foot = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), M.accent);
       foot.scale.set(1.1, 0.6, 1.4);
-      foot.position.set(lx, footY, lz + 0.08);
-      root.add(upper, lower, foot);
+      foot.position.set(0, footY - legY1, 0.08);
+      hip.add(upper, lower, foot);
+      root.add(hip);
+      parts.legs.push(hip);
     }
 
     // 颈圈（随机装饰）
@@ -468,7 +484,7 @@ export function buildPet3D(pet) {
     const head = new THREE.Mesh(new THREE.SphereGeometry(headR, 24, 18), M.body);
     headGroup.add(head);
     headGroup.position.set(0, 0.98, 0);
-    headGroup.add(makeEyes(M, L, headR * 0.42, headR * 0.1, headR * 0.8, 1.1, L.brow));
+    headGroup.add(parts.eyes = makeEyes(M, L, headR * 0.42, headR * 0.1, headR * 0.8, 1.1, L.brow));
     headGroup.add(makeMouth(M, L, -headR * 0.32, headR * 0.85, 0.9));
     if (L.fangPair) headGroup.add(makeFangs(M, -headR * 0.38, headR * 0.8, 0.9));
     if (L.cheek) {
@@ -517,14 +533,18 @@ export function buildPet3D(pet) {
       root.add(arm, hand);
     }
 
-    // 粗壮双腿 + 大脚
+    // 粗壮双腿 + 大脚（关节化：髋部 pivot，可抬腿/跳舞）
     for (const s of [-1, 1]) {
+      const hip = new THREE.Group();
+      hip.position.set(0.26 * s, -0.72, 0);
       const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.24, 4, 10), M.body);
-      leg.position.set(0.26 * s, -0.72, 0);
+      leg.position.set(0, 0, 0);
       const foot = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), M.accent);
       foot.scale.set(1, 0.55, 1.5);
-      foot.position.set(0.26 * s, -0.92, 0.1);
-      root.add(leg, foot);
+      foot.position.set(0, -0.2, 0.1);
+      hip.add(leg, foot);
+      root.add(hip);
+      parts.legs.push(hip);
     }
 
     parts.tail = makeTail(M, L, 0, -0.35, -0.5, 0.9);
@@ -556,7 +576,7 @@ export function buildPet3D(pet) {
     const head = new THREE.Mesh(new THREE.SphereGeometry(headR, 22, 18), M.body);
     headGroup.add(head);
     headGroup.position.set(0, 0.78, 0);
-    headGroup.add(makeEyes(M, L, headR * 0.5, headR * 0.15, headR * 0.72, 0.85));
+    headGroup.add(parts.eyes = makeEyes(M, L, headR * 0.5, headR * 0.15, headR * 0.72, 0.85));
     // 潒（强制 beak）
     const beak = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.24, 4), M.accent);
     beak.rotation.x = Math.PI / 2;
@@ -600,14 +620,18 @@ export function buildPet3D(pet) {
       root.add(feather);
     }
 
-    // 细腿 + 爪
+    // 细腿 + 爪（关节化）
     for (const s of [-1, 1]) {
+      const hip = new THREE.Group();
+      hip.position.set(0.16 * s, -0.78, 0.05);
       const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.4, 8), M.accent);
-      leg.position.set(0.16 * s, -0.78, 0.05);
+      leg.position.set(0, 0, 0);
       const claw = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), M.accent);
       claw.scale.set(1.1, 0.5, 1.5);
-      claw.position.set(0.16 * s, -0.98, 0.1);
-      root.add(leg, claw);
+      claw.position.set(0, -0.2, 0.05);
+      hip.add(leg, claw);
+      root.add(hip);
+      parts.legs.push(hip);
     }
 
     group.add(root);
@@ -653,7 +677,7 @@ export function buildPet3D(pet) {
     headGroup.add(head);
     headGroup.position.set(0, 0.28, 0.28);
     headGroup.rotation.x = 0.25;
-    headGroup.add(makeEyes(M, L, headR * 0.45, headR * 0.25, headR * 0.7, 0.9));
+    headGroup.add(parts.eyes = makeEyes(M, L, headR * 0.45, headR * 0.25, headR * 0.7, 0.9));
     headGroup.add(makeMouth(M, L, -headR * 0.25, headR * 0.95, 0.85));
     // 蛇信
     if (rng() < 0.5) {
@@ -723,7 +747,7 @@ export function buildPet3D(pet) {
     head.scale.set(0.9, 0.85, 1);
     headGroup.add(head);
     headGroup.position.set(0.62, 0.08, 0);
-    headGroup.add(makeEyes(M, L, headR * 0.35, headR * 0.25, headR * 0.68, 0.95));
+    headGroup.add(parts.eyes = makeEyes(M, L, headR * 0.35, headR * 0.25, headR * 0.68, 0.95));
     // 鱼嘴（弧线）
     const mouth = new THREE.Mesh(new THREE.TorusGeometry(headR * 0.28, 0.02, 6, 14, Math.PI * 0.8), M.dark);
     mouth.rotation.x = Math.PI / 2;
@@ -819,7 +843,7 @@ export function buildPet3D(pet) {
 
     // 脸直接长在身上（无独立头）
     const faceY = 0.18;
-    root.add(makeEyes(M, L, 0.2, faceY, 0.58, 1.15));
+    root.add(parts.eyes = makeEyes(M, L, 0.2, faceY, 0.58, 1.15));
     root.add(makeMouth(M, L, faceY - 0.16, 0.56, 0.9));
     // 腮红
     for (const s of [-1, 1]) {
@@ -866,7 +890,7 @@ export function buildPet3D(pet) {
     group.add(root);
   }
 
-  return { group, update, bodyType };
+  return { group, update, bodyType, parts };
 }
 
 /**
