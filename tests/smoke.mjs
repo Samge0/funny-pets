@@ -88,30 +88,27 @@ await page.waitForTimeout(600);
 await page.screenshot({ path: 'test-results/encounter.png', fullPage: false });
 
 // 空手直接丢球（限 5 次/只 + 概率衰减；若 5 次没捕到则换目标验证限制生效）
+// 注：直丢捕获率约 22-46%/次，小概率 10 连败——最多换 3 只目标保证确定性
 const ballBtn = page.locator('.encounter-view .ball');
 let caught = false;
-for (let i = 0; i < 5; i++) {
-  if (await ballBtn.isDisabled()) break; // 球用完
-  await ballBtn.click();
-  await page.waitForTimeout(350);
-  if (!(await page.locator('.encounter-view').count())) { caught = true; break; }
-}
-if (!caught) {
-  // 球用完了 → 验证禁用 + 提示，然后离开重新遭遇再试（新版机制）
-  const disabled = await ballBtn.isDisabled();
-  if (!disabled) throw new Error('5 次丢球失败后按钮应禁用');
-  console.log('✓ 丢球限制生效（5 次后禁用，防无限重试）');
-  await page.getByRole('button', { name: '离开' }).click();
-  await page.locator('.map-card').nth(0).click();
-  await page.locator('.wild-card').waitFor({ timeout: 8000 });
+for (let attempt = 0; attempt < 4 && !caught; attempt++) {
   for (let i = 0; i < 5; i++) {
-    if (await ballBtn.isDisabled()) break;
+    if (await ballBtn.isDisabled()) break; // 球用完
     await ballBtn.click();
     await page.waitForTimeout(350);
     if (!(await page.locator('.encounter-view').count())) { caught = true; break; }
   }
-  if (!caught) throw new Error('10 次丢球全部失败');
+  if (!caught) {
+    // 球用完了 → 验证禁用 + 提示（仅第一轮验证），换目标重试
+    if (await ballBtn.isDisabled()) console.log('✓ 丢球限制生效（5 次后禁用，防无限重试）');
+    await page.getByRole('button', { name: '离开' }).click();
+    if (attempt < 3) {
+      await page.locator('.map-card').nth(0).click();
+      await page.locator('.wild-card').waitFor({ timeout: 8000 });
+    }
+  }
 }
+if (!caught) throw new Error('20 次丢球全部失败（概率异常或捕获率配置问题）');
 const banner = await dismissCelebration();
 if (!banner?.includes('捕捉成功')) throw new Error(`弹窗文案异常: ${banner}`);
 console.log(`✓ 捕捉庆祝弹窗（${banner.trim()}，星爆+3D 展示）`);
