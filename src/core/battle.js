@@ -6,10 +6,10 @@ import { statsAt } from './evolve.js';
 
 const EFFECTS = {
   atkup: { label: '攻击上升', stat: 'atk', mult: 1.35 },
-  atkdown: { label: '攻击下降', stat: 'atk', mult: 0.72 },
+  atkdown: { label: '攻击下降', stat: 'atk', mult: 0.72, debuff: true },
   defup: { label: '防御上升', stat: 'def', mult: 1.35 },
-  defdown: { label: '防御下降', stat: 'def', mult: 0.72 },
-  spddown: { label: '速度下降', stat: 'spd', mult: 0.72 },
+  defdown: { label: '防御下降', stat: 'def', mult: 0.72, debuff: true },
+  spddown: { label: '速度下降', stat: 'spd', mult: 0.72, debuff: true },
   heal: { label: '回复', heal: 0.4 },
 };
 
@@ -80,6 +80,11 @@ function execMove(src, dst, move, isPlayer, events) {
       const healed = Math.round(max * eff.heal);
       src.hp = Math.min(max, src.hp + healed);
       events.push({ type: 'heal', side: isPlayer ? 'player' : 'wild', amount: healed, text: `${src.name}使用${move.name}，回复了 ${healed} 点体力` });
+    } else if (eff.debuff) {
+      // 下降类效果（瞪眼/毒雾/怨念等）：作用于对手，而不是给自己挂 debuff
+      dst.boosts = dst.boosts ?? {};
+      dst.boosts[eff.stat] = (dst.boosts[eff.stat] ?? 1) * eff.mult;
+      events.push({ type: 'buff', side: isPlayer ? 'player' : 'wild', text: `${src.name}使用${move.name}，${dst.name}的${eff.stat === 'atk' ? '攻击' : eff.stat === 'def' ? '防御' : '速度'}下降了！` });
     } else {
       src.boosts = src.boosts ?? {};
       src.boosts[eff.stat] = (src.boosts[eff.stat] ?? 1) * eff.mult;
@@ -163,7 +168,9 @@ export function battleTurn(state, playerAction) {
 
 // 捕获率：血量越低越容易；稀有度修正；休闲向保底
 export function catchChance(wild) {
-  const hpRatio = wild.hp / Math.max(1, statsAt(wild, wild.level).hp);
+  // wild 可能是裸存档对象（无 maxHp），统一按种族值重算当前最大 HP
+  const maxHp = wild.maxHp ?? statsAt(wild, wild.level).hp;
+  const hpRatio = wild.hp / Math.max(1, maxHp);
   const rarityFactor = { common: 1.5, uncommon: 1.2, rare: 0.95, epic: 0.7, legend: 0.45 }[wild.rarity] ?? 1;
   const p = Math.min(0.92, Math.max(0.1, (1 - hpRatio * 0.78) * rarityFactor));
   return p;
