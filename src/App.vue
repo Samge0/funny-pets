@@ -458,7 +458,12 @@ function toggleParty(uid) {
   const i = save.partyIds.indexOf(uid);
   if (i >= 0) save.partyIds.splice(i, 1);
   else if (save.partyIds.length < 4) save.partyIds.push(uid);
-  else showToast('最多上阵 4 只');
+  else { showToast('最多上阵 4 只'); return; }
+  // 上阵的宠物提到图鉴最前（按 partyIds 顺序）；下阵的移到末尾。
+  // 只在状态变化时执行一次——用户随后仍可手动微调排序（出战顺序=图鉴顺序）。
+  const inParty = save.partyIds.map(id => save.pets.find(p => p.uid === id)).filter(Boolean);
+  const others = save.pets.filter(p => !save.partyIds.includes(p.uid));
+  save.pets = [...inParty, ...others];
   persist();
 }
 
@@ -506,7 +511,13 @@ async function onImportFile(e) {
     // 恢复灵魂与聊天（有则覆盖，无则保留导入文件中原样内容）
     if (souls) importSouls(souls);
     if (chats) importChats(chats);
-    // 恢复 LLM 配置（旧导出文件无此字段则保留当前配置）
+    // 存档整理：出战宠按 partyIds 顺序提到前面（图鉴展示与出战序列一致）
+    {
+      const inParty = save.partyIds.map(id => save.pets.find(p => p.uid === id)).filter(Boolean);
+      const others = save.pets.filter(p => !save.partyIds.includes(p.uid));
+      save.pets = [...inParty, ...others];
+    }
+    persist();
     if (llm) {
       Object.assign(llmConfig, {
         baseUrl: String(llm.baseUrl ?? ''),

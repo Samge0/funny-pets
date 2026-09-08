@@ -4,9 +4,9 @@
 </template>
 
 <script setup>
-// 复用 3D 精灵构建器：Toon 材质 + OutlineEffect 轮廓描边（v5 交互版）。
-// 展示层：自动慢速自转 + 周期性随机小动作（小跳/扭摆）；
-// 用户按住拖动（鼠标/触摸）可自由控制旋转方向，松手后 1.2s 恢复自转。
+// 复用 3D 精灵构建器：Toon 材质 + OutlineEffect 轮廓描边（v6 交互版）。
+// 转身控制：外层 pivot group 承载用户旋转/自动转身；内层 group 由 buildPet3D.update
+// 驱动原有小幅摆动。v5 的 bug：update 每帧覆写内层 rotation.y，把自转和拖拽全部吞掉。
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js';
@@ -20,19 +20,18 @@ const props = defineProps({
 
 const mount = ref(null);
 const grabbing = ref(false);
-let scene, camera, renderer, effect, pet3d;
+let scene, camera, renderer, effect, pet3d, pivot;
 let raf = 0;
 const startT = performance.now();
 
 // 交互状态
 let dragging = false;
-let lastX = 0, lastY = 0;
-let spinVel = 0;            // 拖拽释放后的惯性角速度
-let resumeAt = 0;           // 该时间戳后恢复自动自转
-let userYaw = null;         // 用户手动设置的朝向（null=未干预）
+let lastX = 0;
+let spinVel = 0;            // 拖拽释放后的惯性角速度（rad/帧）
+let resumeAt = 0;           // 此时间戳后恢复自动转身
 let nextActAt = 0;          // 下次随机动作时间
 let act = null;             // 当前动作 {kind, start}
-let baseY = 0;
+const baseY = 0;
 
 function init() {
   if (!mount.value) return;
@@ -49,13 +48,15 @@ function init() {
 
   const built = buildPet3D(props.pet);
   pet3d = built;
-  scene.add(built.group);
+  // 外层 pivot：转身/拖拽只动 pivot；内层 group 留给 update() 做摆动（互不覆盖）
+  pivot = new THREE.Group();
+  pivot.add(built.group);
+  scene.add(pivot);
 
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(props.size, props.size);
 
-  // 轮廓描边：卡通渲染的灵魂
   effect = new OutlineEffect(renderer, {
     defaultThickness: 0.0035,
     defaultColor: [0.16, 0.16, 0.23],
@@ -64,40 +65,35 @@ function init() {
 
   mount.value.appendChild(renderer.domElement);
 
-  nextActAt = performance.now() + 1800 + Math.random() * 2500;
+  nextActAt = performance.now() + 1600 + Math.random() * 2200;
   const loop = () => {
     raf = requestAnimationFrame(loop);
     const now = performance.now();
     const t = (now - startT) / 1000;
 
-    // ---- 朝向控制：拖拽中直接由 onPointerMove 设置；松手后惯性 → 1.2s → 恢复自动自转 ----
+    // ---- 转身控制（pivot.rotation.y）：拖拽中由 onPointerMove 直接设置 ----
     if (!dragging) {
-      if (Math.abs(spinVel) > 0.02) {
-        userYaw = (userYaw ?? pet3d.group.rotation.y) + spinVel;
-        spinVel *= 0.93;                       // 惯性衰减
-        pet3d.group.rotation.y = userYaw;
-        resumeAt = now + 1200;
+      if (Math.abs(spinVel) > 0.0015) {
+        pivot.rotation.y += spinVel;         // 惯性
+        spinVel *= 0.94;                     // 衰减
+        resumeAt = now + 1400;
       } else if (props.idleSpin && now >= resumeAt) {
-        // 自动自转：手动干预过则从当前角度继续慢转（无跳变）；否则保持原小幅摆动
-        const base = userYaw ?? pet3d.group.rotation.y;
-        userYaw = base + 0.004;
-        pet3d.group.rotation.y = userYaw;
-      } else if (userYaw != null) {
-        pet3d.group.rotation.y = userYaw;      // 干预后的静止窗口
+        pivot.rotation.y += 0.011;           // 自动转身（~9°/100ms，2 秒内转完半圈——真"转身"）
       }
     }
 
-    // ---- 随机小动作（空闲触发，动作期间叠加 hop/wiggle）----
+    // ---- 随机小动作（空闲触发，叠加在转身之上）----
     if (!dragging && now >= nextActAt && !act) {
-      act = { kind: ['hop', 'wiggle'][Math.floor(Math.random() * 2)], start: now };
-      nextActAt = now + 3200 + Math.random() * 4200;
+      act = { kind: ['hop', 'wiggle', 'spinOnce'][Math.floor(Math.random() * 3)], start: now };
+      nextActAt = now + 3000 + Math.random() * 4000;
     }
     let hopY = 0, wiggleZ = 0;
     if (act) {
-      const p = (now - act.start) / 700; // 0.7s 动作
+      const p = (now - act.start) / 800; // 0.8s 动作
       if (p >= 1) act = null;
-      else if (act.kind === 'hop') hopY = Math.sin(p * Math.PI) * 0.22;
-      else wiggleZ = Math.sin(p * Math.PI * 3) * 0.16;
+      else if (act.kind === 'hop') hopY = Math.sin(p * Math.PI) * 0.24;
+      else if (act.kind === 'wiggle') wiggleZ = Math.sin(p * Math.PI * 3) * 0.15;
+      else if (act.kind === 'spinOnce') pivot.rotation.y += 0.055 * Math.sin(p * Math.PI); // 卖萌回旋
     }
 
     pet3d.update(t);
@@ -108,30 +104,26 @@ function init() {
   loop();
 }
 
-// ---- 指针交互：按住拖动旋转（鼠标 + 触摸统一 pointer events）----
+// ---- 指针交互：按住水平拖动 → 跟随旋转（鼠标 + 触摸统一 pointer events）----
 function onPointerDown(e) {
   dragging = true;
   grabbing.value = true;
   lastX = e.clientX;
-  lastY = e.clientY;
   spinVel = 0;
-  userYaw = pet3d?.group.rotation.y ?? 0;
-  e.currentTarget.setPointerCapture?.(e.pointerId);
+  try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* ignore */ }
   e.preventDefault();
 }
 function onPointerMove(e) {
-  if (!dragging || !pet3d) return;
+  if (!dragging || !pivot) return;
   const dx = e.clientX - lastX;
   lastX = e.clientX;
-  lastY = e.clientY;
-  userYaw += dx * 0.012; // 水平拖拽 → Y 轴旋转（跟随用户方向）
-  pet3d.group.rotation.y = userYaw;
-  spinVel = dx * 0.0035; // 记录惯性
+  pivot.rotation.y += dx * 0.012;            // 拖 80px ≈ 转 55°，跟手
+  spinVel = dx * 0.004;                      // 释放惯性
 }
 function onPointerUp() {
   dragging = false;
   grabbing.value = false;
-  resumeAt = performance.now() + 1200; // 松手 1.2s 后回到自动自转
+  resumeAt = performance.now() + 1400;       // 松手 1.4s 后恢复自动转身
 }
 
 function dispose() {
@@ -142,6 +134,7 @@ function dispose() {
     renderer = null;
   }
   effect = null;
+  pivot = null;
   scene?.traverse(obj => {
     if (obj.geometry) obj.geometry.dispose?.();
     if (obj.material) {

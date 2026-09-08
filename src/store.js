@@ -117,7 +117,14 @@ export function adoptPet(wild) {
   delete pet.boosts;
   save.pets.push(pet);
   save.counters.caught++;
-  if (save.partyIds.length < 4) save.partyIds.push(uid);
+  if (save.partyIds.length < 4) {
+    save.partyIds.push(uid);
+    // 新捕捉入队的宠物排到图鉴最前（= 出战序列前排），与 toggleParty 行为一致
+    save.pets = [
+      ...save.partyIds.map(id => save.pets.find(p => p.uid === id)).filter(Boolean),
+      ...save.pets.filter(p => !save.partyIds.includes(p.uid)),
+    ];
+  }
   persist();
   return pet;
 }
@@ -127,7 +134,9 @@ export function petByUid(uid) {
 }
 
 export const party = computed(() =>
-  save.partyIds.map(id => petByUid(id)).filter(Boolean).map(p => withStats(p))
+  // 出战顺序 = 图鉴排序顺序：按 save.pets 的先后过滤 partyIds
+  // （图鉴里调整排序/置顶后，战斗首发与换宠顺序同步变化）
+  save.pets.filter(p => save.partyIds.includes(p.uid)).map(p => withStats(p))
 );
 
 export function withStats(pet) {
