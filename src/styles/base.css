@@ -210,9 +210,17 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 .dex-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
 .dex-card[draggable="true"] { -webkit-user-drag: element; user-select: none; }
-.dex-card.dragging { opacity: 0.45; transform: scale(0.97); }
+/* 排序按钮组（替代拖拽：与页面滚动零冲突） */
+.sort-btns { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 3px; }
+.sort-btn {
+  width: 24px; height: 22px; line-height: 1; font-size: 12px; padding: 0;
+  border-radius: 7px; border: 1px solid rgba(120,130,160,0.3);
+  background: rgba(255,255,255,0.85); color: #4a5262; cursor: pointer;
+}
+.sort-btn:hover:not(:disabled) { background: var(--primary, #5b7fd4); color: #fff; border-color: var(--primary, #5b7fd4); }
+.sort-btn:disabled { opacity: 0.3; cursor: default; }
 .dex-card.inParty { border-color: var(--primary); background: linear-gradient(180deg, rgba(91,127,212,0.10), rgba(255,255,255,0.72)); }
-.dex-card.inParty::after { content: '出战'; position: absolute; top: 8px; right: 30px; font-size: 10px; color: var(--primary-deep); border: 1px solid var(--primary); padding: 1px 6px; border-radius: 8px; }
+.dex-card.inParty::after { content: '出战'; position: absolute; top: 8px; left: 8px; font-size: 10px; color: var(--primary-deep); border: 1px solid var(--primary); padding: 1px 6px; border-radius: 8px; }
 .dex-sprite { flex-shrink: 0; width: 84px; height: 84px; background: radial-gradient(circle at 50% 60%, rgba(91,127,212,0.1), transparent 70%); border-radius: 12px; }
 .dex-sprite img { image-rendering: auto; }
 .phase-badge { font-size: 10px; color: #9c4ab8; border: 1px solid #9c4ab8; border-radius: 6px; padding: 0 4px; vertical-align: middle; }

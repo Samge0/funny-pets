@@ -435,29 +435,23 @@ const dexList = computed(() => save.pets.map(p => withStats(p)));
 const totalSeen = computed(() => Object.keys(save.dexSeen).length);
 const collectionGoal = 30;
 
-// 图鉴拖动排序：拖起记录 uid，落到目标卡上时在 save.pets 中移动位置并持久化
-const dragPetUid = ref(null);
-function onDragStart(pet, e) {
-  dragPetUid.value = pet.uid;
-  e.dataTransfer.effectAllowed = 'move';
-  try { e.dataTransfer.setData('text/plain', String(pet.uid)); } catch { /* Safari 兜底 */ }
-}
-function onDragOver(pet, e) {
-  if (dragPetUid.value == null || dragPetUid.value === pet.uid) return;
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-}
-function onDrop(pet, e) {
-  e.preventDefault();
-  const fromUid = dragPetUid.value;
-  dragPetUid.value = null;
-  if (fromUid == null || fromUid === pet.uid) return;
-  const from = save.pets.findIndex(p => p.uid === fromUid);
-  const to = save.pets.findIndex(p => p.uid === pet.uid);
-  if (from < 0 || to < 0) return;
-  save.pets.splice(to, 0, save.pets.splice(from, 1)[0]); // 移动到目标位置
+// 图鉴排序按钮：置顶/上移/下移（拖拽与页面滚动冲突，改为按钮操作）
+function movePet(pet, dir) {
+  const idx = save.pets.findIndex(p => p.uid === pet.uid);
+  if (idx < 0) return;
+  let to;
+  if (dir === 'top') {
+    if (idx === 0) return;
+    to = 0;
+  } else if (dir === 'up') {
+    if (idx === 0) return;
+    to = idx - 1;
+  } else if (dir === 'down') {
+    if (idx === save.pets.length - 1) return;
+    to = idx + 1;
+  } else return;
+  save.pets.splice(to, 0, save.pets.splice(idx, 1)[0]);
   persist();
-  showToast('图鉴顺序已更新');
 }
 
 function toggleParty(uid) {
@@ -679,11 +673,10 @@ onMounted(() => { view.value = 'map'; });
 
       <!-- ============ 图鉴 ============ -->
       <section v-else-if="view === 'dex'" class="dex-view">
-        <p class="hint">已遇见 {{ totalSeen }} 种 · 已捕捉 {{ save.pets.length }}/{{ collectionGoal }} · 上阵 {{ save.partyIds.length }}/4（点击卡片切换上阵 · 拖动卡片排序）</p>
+        <p class="hint">已遇见 {{ totalSeen }} 种 · 已捕捉 {{ save.pets.length }}/{{ collectionGoal }} · 上阵 {{ save.partyIds.length }}/4（点击卡片切换上阵 · 按钮排序）</p>
         <div v-if="!dexList.length" class="empty">还没有捕捉到精灵，去地图逛逛吧！</div>
         <div class="dex-grid">
-          <div v-for="pet in dexList" :key="pet.uid" class="dex-card" :class="{ inParty: save.partyIds.includes(pet.uid), dragging: dragPetUid === pet.uid }"
-            draggable="true" @dragstart="onDragStart(pet, $event)" @dragover="onDragOver(pet, $event)" @drop="onDrop(pet, $event)" @dragend="dragPetUid = null"
+          <div v-for="(pet, di) in dexList" :key="pet.uid" class="dex-card" :class="{ inParty: save.partyIds.includes(pet.uid) }"
             @click="detailPet = pet">
             <div class="dex-sprite"><img :key="petSnapshotKey(pet)" :src="petSnapshot(pet)" :alt="pet.name" width="84" height="84" loading="lazy" /></div>
             <div class="dex-info">
@@ -700,6 +693,11 @@ onMounted(() => { view.value = 'map'; });
               <p class="lore">{{ pet.lore }}</p>
             </div>
             <button class="release" @click.stop="releasePet(pet)" title="放归">✕</button>
+            <div class="sort-btns" @click.stop>
+              <button class="sort-btn" :disabled="di === 0" @click="movePet(pet, 'top')" title="置顶">⤒</button>
+              <button class="sort-btn" :disabled="di === 0" @click="movePet(pet, 'up')" title="上移">↑</button>
+              <button class="sort-btn" :disabled="di === dexList.length - 1" @click="movePet(pet, 'down')" title="下移">↓</button>
+            </div>
             <button class="party-toggle" :class="{ on: save.partyIds.includes(pet.uid) }"
               @click.stop="toggleParty(pet.uid)" :title="save.partyIds.includes(pet.uid) ? '下阵' : '上阵'">
               {{ save.partyIds.includes(pet.uid) ? '出战中' : '上阵' }}
