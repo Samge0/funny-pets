@@ -460,10 +460,11 @@ function evExp(pet) {
 
 // ---- 存档导入导出 ----
 function doExport() {
-  // 存档 + 灵魂档案 + 聊天记录一起导出（人格/羁绊/记忆不丢失）
+  // 存档 + 灵魂档案 + 聊天记录 + LLM 配置一起导出（人格/羁绊/记忆/接口配置不丢失）
   const blob = new Blob([exportSaveText(JSON.parse(JSON.stringify({ ...save, version: 1 })), {
     souls: exportSouls(),
     chats: exportChats(),
+    llm: { ...llmConfig },
   })], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -478,12 +479,22 @@ async function onImportFile(e) {
   if (!file) return;
   try {
     const text = await file.text();
-    const { save: data, souls, chats } = importSaveText(text);
+    const { save: data, souls, chats, llm } = importSaveText(text);
     if (!confirm('导入会覆盖当前存档，确定继续吗？')) return;
     Object.assign(save, data);
     // 恢复灵魂与聊天（有则覆盖，无则保留导入文件中原样内容）
     if (souls) importSouls(souls);
     if (chats) importChats(chats);
+    // 恢复 LLM 配置（旧导出文件无此字段则保留当前配置）
+    if (llm) {
+      Object.assign(llmConfig, {
+        baseUrl: String(llm.baseUrl ?? ''),
+        model: String(llm.model ?? ''),
+        apiKey: String(llm.apiKey ?? ''),
+        enabled: !!llm.enabled,
+      });
+      saveLlmConfig();
+    }
     persist();
     showToast('导入成功');
   } catch (err) {

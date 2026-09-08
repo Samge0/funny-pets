@@ -118,5 +118,6 @@ export function importSaveText(text) {
     save: validateSave(parsed.data),
     souls: parsed.souls && typeof parsed.souls === 'object' ? parsed.souls : null,
     chats: parsed.chats && typeof parsed.chats === 'object' ? parsed.chats : null,
+    llm: parsed.llm && typeof parsed.llm === 'object' ? parsed.llm : null,
   };
 }

@@ -1,0 +1,8 @@
+services:
+  funny-pets:
+    build: .
+    image: funny-pets:latest
+    container_name: funny-pets
+    ports:
+      - "4173:80"
+    restart: unless-stopped

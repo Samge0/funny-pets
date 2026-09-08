@@ -235,7 +235,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .panel h3 { font-size: 15px; }
 .panel label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-dim); }
 .panel label:has(input[type="checkbox"]) { flex-direction: row; align-items: center; gap: 8px; color: var(--text); }
-.panel input[type="text"], .panel input:not([type]) {
+.panel input[type="text"], .panel input[type="password"], .panel input:not([type]) {
   border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px; font-size: 13px;
   background: rgba(255, 255, 255, 0.9); outline: none;
 }

@@ -44,6 +44,18 @@ node scripts/render-promo-pets.mjs  # 重新生成宣传页 3D 精灵快照（�
 
 本地访问 `http://127.0.0.1:4173/funny-pets/`（宣传页）、`http://127.0.0.1:4173/funny-pets/app/`（游戏）。
 
+## Docker 部署
+
+仓库自带 [Dockerfile](Dockerfile)、[.dockerignore](.dockerignore) 与 [docker-compose.yaml](docker-compose.yaml)：多阶段构建（Node 执行 `vite build` → nginx 托管 `dist/` 静态产物），nginx 已按 `base: '/funny-pets/'` 配好路径映射，`/` 与 `/app/` 会 302 到对应子路径，与 GitHub Pages 部署的站点结构一致。
+
+```bash
+docker compose up -d --build    # 构建并启动（宿主机端口 4173 → 容器 80）
+```
+
+启动后访问 <http://localhost:4173/>（宣传页，自动跳转 `/funny-pets/`）、<http://localhost:4173/app/>（游戏）。改端口只需编辑 `docker-compose.yaml` 里的 `ports` 映射。
+
+> 构建阶段的工作目录为 `/site` 而非惯用的 `/app`：项目内有 `app/` 目录，Vite 会把绝对路径入口 `/app/index.html` 误解析为 URL 命中 `<root>/app/index.html`（游戏页），导致宣传页入口在构建产物中丢失。详见 Dockerfile 内注释。
+
 ## 项目结构
 
 ```text
