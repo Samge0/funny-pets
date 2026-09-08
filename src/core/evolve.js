@@ -36,6 +36,47 @@ function upgradeMove(move) {
   return { ...move, power: MOVE_UPGRADE[move.power] ?? move.power + 8 };
 }
 
+// ---- 升级吞噬：从我方视角吞掉战败对手的技能与外观部件 ----
+// 技能槽上限 4：吞噬时若已满则随机替换一个低威力攻击技（变化技优先被替换）
+export function devourMoves(pet, defeatedMoves) {
+  const gained = [];
+  for (const dm of defeatedMoves) {
+    if (Math.random() > 0.35) continue;         // 每技能 35% 吞噬概率
+    if (pet.moves.find(m => m.name === dm.name)) continue; // 已有同名跳过
+    if (pet.moves.length < 4) {
+      pet.moves.push({ ...dm });
+      gained.push(dm.name);
+    } else if (dm.power) {
+      // 槽满：找最弱的攻击技替换（保留至少 1 个攻击技）
+      const atkIdx = pet.moves.map((m, i) => ({ m, i })).filter(x => x.m.power).sort((a, b) => a.m.power - b.m.power);
+      if (atkIdx.length && atkIdx[0].m.power < dm.power) {
+        const oldName = pet.moves[atkIdx[0].i].name;
+        pet.moves[atkIdx[0].i] = { ...dm };
+        gained.push(`${dm.name}（替换了 ${oldName}）`);
+      }
+    }
+  }
+  return gained;
+}
+
+// ---- 升级吞噬（外观方向）：随机掠夺战败对手的部件（UI 建模长相） ----
+// look.ears/tail/accessory 三类可吞噬；palette 不抢（配色是身份）
+const DEVOUR_PARTS = ['ears', 'tail', 'accessory'];
+
+export function devourLook(pet, defeatedLook) {
+  const gained = [];
+  for (const part of DEVOUR_PARTS) {
+    const theirs = defeatedLook?.[part];
+    if (!theirs || theirs === 'none') continue;                 // 对手没长这个部位
+    if (Math.random() > 0.3) continue;                          // 每部件 30% 掠夺概率
+    if (pet.look[part] === theirs) continue;                    // 同款跳过
+    const old = pet.look[part];
+    pet.look = { ...pet.look, [part]: theirs };
+    gained.push(`${part}: ${old} → ${theirs}`);
+  }
+  return gained;
+}
+
 export function evolvePet(pet, phase) {
   if (phase === 0) return pet;
   const rng = mulberry32((pet.seed * 7919 + phase * 104729) >>> 0);

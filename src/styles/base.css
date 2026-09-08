@@ -179,7 +179,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .battle-log {
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 12px 16px; min-height: 92px; margin-bottom: 12px; font-size: 13px; line-height: 1.8; color: var(--text);
+  padding: 10px 16px; height: 108px; overflow-y: auto; margin-top: 12px;
+  font-size: 13px; line-height: 1.8; color: var(--text);
 }
 .battle-log p { animation: fade-in 0.3s ease; }
 .battle-log p.hl { color: #c04a70; font-weight: 700; }
@@ -254,16 +255,20 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ---- 战斗吐槽气泡 ---- */
+/* ---- 战斗吐槽气泡（竞技场内，精灵下方流式输出） ---- */
 .taunt-bubble {
-  margin: 0 auto 12px; max-width: 480px;
-  background: rgba(255,255,255,0.92); backdrop-filter: blur(10px);
+  position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%);
+  max-width: min(78%, 430px); z-index: 6;
+  background: rgba(255,255,255,0.94); backdrop-filter: blur(10px);
   border: 1.5px solid rgba(91,127,212,0.4); border-radius: 14px;
-  box-shadow: 0 6px 18px rgba(91,127,212,0.2);
-  padding: 9px 14px; font-size: 13.5px; text-align: center;
+  box-shadow: 0 6px 18px rgba(91,127,212,0.25);
+  padding: 8px 14px; font-size: 13px; text-align: center;
   animation: taunt-pop 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
 }
+.taunt-bubble.taunt-mine { border-color: rgba(91,127,212,0.55); }
+.taunt-bubble.taunt-wild { border-color: rgba(232,98,44,0.55); }
 .taunt-who { font-weight: 800; color: var(--primary-deep, #4664b0); margin-right: 8px; }
+.taunt-wild .taunt-who { color: #b34a2e; }
 .taunt-text { color: #2a3040; }
 .taunt-text::after { content: '▌'; color: #5b7fd4; animation: blink 0.8s steps(1) infinite; margin-left: 1px; }
 @keyframes taunt-pop { from { transform: translateY(8px) scale(0.95); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -284,9 +289,20 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 @media (max-width: 640px) {
   .topbar { flex-direction: column; gap: 8px; }
   .tabs { width: 100%; justify-content: space-between; }
-  .battle-arena { flex-direction: column; gap: 14px; min-height: 0; }
-  .fighter.wild, .fighter.mine { align-self: center; }
-  .vs { transform: rotate(90deg); }
+  /* 战斗：左右布局（移动端也保持左右对峙，不再上下堆叠拉长页面） */
+  .battle-arena { flex-direction: row; align-items: stretch; gap: 6px; min-height: 0; padding: 14px 8px 40px; }
+  .fighter { min-width: 0; flex: 1; gap: 6px; }
+  .fighter.wild { align-self: flex-start; }
+  .fighter.mine { align-self: flex-end; justify-content: flex-end; }
+  .fighter.mine .plate { order: -1; } /* 我方信息牌在上、模型在下，形成对角对峙 */
+  .fighter-model canvas { width: 100% !important; height: auto !important; }
+  .plate { min-width: 0; width: 100%; padding: 6px 8px; }
+  .plate-row { font-size: 11.5px; gap: 6px; }
+  .hp-num { font-size: 10px; }
+  .vs { font-size: 16px; align-self: center; }
+  .taunt-bubble { font-size: 11.5px; padding: 6px 10px; max-width: 88%; bottom: 5px; }
+  .battle-log { height: 88px; font-size: 12px; }
+  .battle-actions .skill { min-width: 0; flex: 1 1 40%; }
   .dex-card { flex-direction: column; align-items: center; text-align: center; }
   .dex-info .stats { justify-content: center; }
   .wild-card { padding: 16px 18px 20px; }

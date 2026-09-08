@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onMounted, nextTick } from 'vue';
+import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue';
 import { save, showToast, spawnWild, adoptPet, party, withStats, gainExp, persist, rarityInfo, mapInfo, isMapUnlocked, mapLevelRange, llmConfig, saveLlmConfig, petByUid, celebration, closeCelebration, celebrate } from './store.js';
 import { MAPS } from './data/maps.js';
 import { petSvg } from './core/sprites.js';
@@ -7,7 +7,7 @@ import { isLlmConfigured, generatePetWithLlm, tauntWithSoul, localTaunt } from '
 import { ensureSoul, updateSoul, driftTraits, touchRelation, addEpisodic, onEvolve, forgetSoul } from './core/soul.js';
 import { forgetChat } from './chat.js';
 import { newBattleState, battleTurn, catchChance } from './core/battle.js';
-import { statsAt } from './core/evolve.js';
+import { statsAt, devourMoves, devourLook } from './core/evolve.js';
 import { TYPE_COLORS } from './data/types.js';
 import { exportSaveText, importSaveText, clearAllStorage } from './storage.js';
 import { exportSouls, importSouls } from './core/soul.js';
@@ -21,6 +21,11 @@ const spawning = ref(false);
 const wild = ref(null);
 const battle = ref(null);
 const battleLog = ref([]);
+const logEl = ref(null);
+watch(battleLog, () => {
+  // 新纪录自动滚到底（战报区固定高度不推挤按钮）
+  nextTick(() => { if (logEl.value) logEl.value.scrollTop = logEl.value.scrollHeight; });
+}, { deep: false });
 const battleBusy = ref(false);
 const lastExpGain = ref(0);
 // 详情弹窗 + 丢球限制
@@ -177,8 +182,14 @@ function fireTaunt(attacker, defender, evt) {
   taunt.text = '';
   const localFallback = localTaunt(attacker, defender, evt.moveName, evt.damage, evt.eff, evt.crit, hpRatio, trainerTitle);
   tauntWithSoul(llmConfig, attacker, soul, scene, tauntAbort.signal,
-    (delta) => { taunt.text += delta; })
+    (delta) => {
+      // 流式增量过滤 __STATE__{...} 状态行：状态是给程序的数据，不应出现在对话气泡里
+      taunt._raw = (taunt._raw ?? '') + delta;
+      const idx = taunt._raw.indexOf('__STATE__');
+      taunt.text = idx >= 0 ? taunt._raw.slice(0, idx).trimEnd() : taunt._raw;
+    })
     .then(result => {
+      taunt._raw = '';
       taunt.text = result.body || taunt.text;
       // 灵魂成长：战斗共识 + LLM 返回的状态
       import('./core/soul.js').then(({ updateSoul, driftTraits, touchRelation }) => {
@@ -280,6 +291,16 @@ function winBattle() {
       }
     }
   }
+  // 升级吞噬：主战精灵每升 1 级掷一次吞噬（吞对手技能 + 外观部件）
+  let devourDesc = '';
+  if (r.levels > 0) {
+    const gainedMoves = devourMoves(mine, state.wild.moves ?? []);
+    const gainedParts = devourLook(mine, state.wild.look);
+    if (gainedMoves.length || gainedParts.length) {
+      devourDesc = [gainedMoves.length ? `吞噬技能：${gainedMoves.join('、')}` : '', gainedParts.length ? `掠夺部件：${gainedParts.join('、')}` : ''].filter(Boolean).join('；');
+      addEpisodic(ensureSoul(mine), `击败了${state.wild.name}，吞噬了它的${gainedMoves.join('、') || '外型特征'}，感觉更强了。`);
+    }
+  }
   persist();
   if (r.evolvedTo) {
     save.counters.evolutions++;
@@ -292,7 +313,7 @@ function winBattle() {
     const e = sharedEvolved[sharedEvolved.length - 1];
     celebrate('evolve', e, `队伍中的 ${e.name} 进化了！`);
   } else if (r.leveled) {
-    celebrate('levelup', mine, `${mine.name} 升到了 Lv.${mine.level}！${r.newMoves.length ? r.newMoves.join('，') : `获得 ${exp} 点经验`}`);
+    celebrate('levelup', mine, `${mine.name} 升到了 Lv.${mine.level}！${devourDesc || (r.newMoves.length ? r.newMoves.join('，') : `获得 ${exp} 点经验`)}`);
   } else {
     showToast(`战斗胜利，${mine.name} +${exp} 经验`);
   }
@@ -501,8 +522,8 @@ onMounted(() => { view.value = 'map'; });
 
       <!-- ============ 战斗 ============ -->
       <section v-else-if="view === 'battle' && battle" class="battle-view" :class="{ shake: shakeScreen }">
-        <div class="battle-arena">
-          <!-- 野生 -->
+        <div class="battle-arena" :class="{ 'has-taunt': !!taunt.text }">
+          <!-- 野生（左） -->
           <div class="fighter wild" :class="{ attacking: anim.who === 'wild' && anim.kind === 'attack', hit: anim.who === 'wild' && anim.kind === 'hit', fainting: anim.who === 'wild' && anim.kind === 'faint' }">
             <div class="plate">
               <div class="plate-row"><strong>{{ battle.wild.name }}</strong><span>Lv.{{ battle.wild.level }}</span></div>
@@ -512,7 +533,7 @@ onMounted(() => { view.value = 'map'; });
             <div class="fighter-model"><Pet3D :pet="battle.wild" :size="130" /></div>
           </div>
           <div class="vs">⚡</div>
-          <!-- 我方 -->
+          <!-- 我方（右） -->
           <div class="fighter mine" :class="{ attacking: anim.who === 'player' && anim.kind === 'attack', hit: anim.who === 'player' && anim.kind === 'hit', fainting: anim.who === 'player' && anim.kind === 'faint' }">
             <div class="fighter-model"><Pet3D :pet="battle.active" :size="130" /></div>
             <div class="plate">
@@ -525,20 +546,16 @@ onMounted(() => { view.value = 'map'; });
           <div class="float-layer">
             <span v-for="f in floatTexts" :key="f.id" class="float-txt" :class="'who-' + f.who">{{ f.text }}</span>
           </div>
+          <!-- 灵魂对话气泡：流式输出在竞技场底部（精灵下方），随说话者靠左/靠右 -->
+          <Transition name="taunt">
+            <div v-if="taunt.text" class="taunt-bubble" :class="'taunt-' + (taunt.who === 'wild' ? 'wild' : 'mine')">
+              <span class="taunt-who">{{ taunt.who === 'wild' ? battle.wild.name : battle.active.name }}</span>
+              <span class="taunt-text">{{ taunt.text }}</span>
+            </div>
+          </Transition>
         </div>
 
-        <div class="battle-log">
-          <p v-for="(e, i) in battleLog.slice(-5)" :key="i" :class="{ hl: e.type === 'faint' || (e.type === 'ball' && e.caught) }">{{ e.text }}</p>
-        </div>
-
-        <!-- 战斗吐槽气泡（LLM 流式 / 本地模板） -->
-        <Transition name="taunt">
-          <div v-if="taunt.text" class="taunt-bubble">
-            <span class="taunt-who">{{ battle.active.name }}</span>
-            <span class="taunt-text">{{ taunt.text }}</span>
-          </div>
-        </Transition>
-
+        <!-- 操作区（优先级最高，不被战报推挤） -->
         <!-- 强制换宠 -->
         <div v-if="battle.ended === 'switch'" class="battle-actions force-switch">
           <p class="hint">哪只精灵继续战斗？</p>
@@ -558,6 +575,11 @@ onMounted(() => { view.value = 'map'; });
             丢球 <small>{{ Math.round(catchChance(battle.wild) * 100) }}%</small>
           </button>
           <button class="ghost" :disabled="battleBusy || !!battle.ended" @click="act({ type: 'run' })">逃跑</button>
+        </div>
+
+        <!-- 战报（固定高度可滚动，新纪录自动滚到底，不再推挤按钮） -->
+        <div class="battle-log" ref="logEl">
+          <p v-for="(e, i) in battleLog.slice(-12)" :key="i" :class="{ hl: e.type === 'faint' || (e.type === 'ball' && e.caught) }">{{ e.text }}</p>
         </div>
       </section>
 
