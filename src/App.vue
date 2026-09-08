@@ -4,11 +4,14 @@ import { save, showToast, spawnWild, adoptPet, party, withStats, gainExp, persis
 import { MAPS } from './data/maps.js';
 import { petSvg } from './core/sprites.js';
 import { isLlmConfigured, generatePetWithLlm, tauntWithSoul, localTaunt } from './core/llm.js';
-import { ensureSoul, updateSoul, driftTraits, touchRelation, addEpisodic, onEvolve } from './core/soul.js';
+import { ensureSoul, updateSoul, driftTraits, touchRelation, addEpisodic, onEvolve, forgetSoul } from './core/soul.js';
+import { forgetChat } from './chat.js';
 import { newBattleState, battleTurn, catchChance } from './core/battle.js';
 import { statsAt } from './core/evolve.js';
 import { TYPE_COLORS } from './data/types.js';
-import { exportSaveText, importSaveText } from './storage.js';
+import { exportSaveText, importSaveText, clearAllStorage } from './storage.js';
+import { exportSouls, importSouls } from './core/soul.js';
+import { exportChats, importChats } from './chat.js';
 import Pet3D from './components/Pet3D.vue';
 import Celebration from './components/Celebration.vue';
 import PetDetail from './components/PetDetail.vue';
@@ -29,20 +32,24 @@ const petSvgOf = (pet, size) => petSvg(pet, size);
 const typeChipStyle = (t) => ({ background: TYPE_COLORS[t] ?? '#9fa19f' });
 
 // 图鉴快照缓存：seed+phase 相同直接复用 dataURL（避免几十个 WebGL context）
-const snapCache = new Map();
+const snapCache = reactive(new Map()); // reactive：渲染完成后触发卡片 img 重渲染
 async function renderSnapshotSafe(pet) {
   try {
     const { renderSnapshotOutlined } = await import('./core/snapshot.js');
     return renderSnapshotOutlined(pet, 160);
   } catch {
-    return petSvg(pet, 96);
+    return petSvgDataUrl(pet);
   }
+}
+// 占位 SVG 必须编码为 dataURL 才能作为 <img src>（裸字符串会被当相对路径 → 404 破图）
+function petSvgDataUrl(pet) {
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(petSvg(pet, 96));
 }
 function petSnapshot(pet) {
   const key = `${pet.seed}:${pet.phase ?? 0}`;
   if (!snapCache.has(key)) {
-    snapCache.set(key, petSvg(pet, 96)); // 先占位，渲染完响应式刷新
-    renderSnapshotSafe(pet).then(url => snapCache.set(key, url));
+    snapCache.set(key, petSvgDataUrl(pet)); // 先占位，渲染完响应式刷新
+    renderSnapshotSafe(pet).then(url => { if (url) snapCache.set(key, url); });
   }
   return snapCache.get(key);
 }
@@ -96,6 +103,11 @@ function throwDirect() {
 }
 
 function startBattle() {
+  // 没有精灵时开战会以 undefined 组队直接崩溃——引导先去捕捉
+  if (!party.value.length) {
+    showToast('还没有精灵伙伴！先丢球捕捉一只吧');
+    return;
+  }
   const healthy = party.value.filter(p => p.hp > 0);
   if (!healthy.length) {
     // 全队倒下：原地复活（休闲游戏，不设惩罚死循环）
@@ -103,10 +115,12 @@ function startBattle() {
     showToast('队伍已休整完毕！');
     healthy.push(...party.value);
   }
-  // 组建战斗队伍：存档中从未上场的宠物没有 hp 字段，按满血补齐
+  // 组建战斗队伍：存档中从未上场的宠物没有 hp 字段，按满血补齐。
+  // 捕捉时已剥离战斗态（hp/boosts），这里统一从满血开始（休闲设计：战斗损伤不入档）
   const battleParty = party.value.map(p => {
     const copy = withStats({ ...p });
-    if (copy.hp == null || copy.hp <= 0) copy.hp = copy.maxHp;
+    copy.hp = copy.maxHp; // 每场战斗从满血开始（战斗内扣血只影响本场）
+    copy.boosts = {};
     return copy;
   });
   const first = battleParty.find(p => p.uid === healthy[0].uid) ?? battleParty[0];
@@ -161,6 +175,7 @@ function fireTaunt(attacker, defender, evt) {
   tauntAbort?.abort();
   tauntAbort = new AbortController();
   taunt.text = '';
+  const localFallback = localTaunt(attacker, defender, evt.moveName, evt.damage, evt.eff, evt.crit, hpRatio, trainerTitle);
   tauntWithSoul(llmConfig, attacker, soul, scene, tauntAbort.signal,
     (delta) => { taunt.text += delta; })
     .then(result => {
@@ -174,7 +189,13 @@ function fireTaunt(attacker, defender, evt) {
       });
       setTimeout(() => { if (taunt.text === result.body) taunt.text = ''; }, 2800);
     })
-    .catch(() => { /* 已有本地兜底上屏，静默 */ });
+    .catch(() => {
+      // LLM 失败：本地兜底台词上屏（此前 taunt.text 被清空后失败则静默无台词）
+      if (!taunt.text) {
+        taunt.text = localFallback;
+        setTimeout(() => { if (taunt.text === localFallback) taunt.text = ''; }, 2600);
+      }
+    });
 }
 function fireTauntMiss(attacker, defender) {
   const soul = soulOf(attacker);
@@ -212,6 +233,13 @@ async function act(action) {
     if (state.ended === 'caught') succeedCatch();
     else if (state.ended === 'win') winBattle();
     else if (state.ended === 'lose') loseBattle();
+    else if (state.ended === 'ran') {
+      // 逃跑成功：正常退出战斗返回地图（此前无处理导致界面卡死）
+      battle.value = null;
+      wild.value = null;
+      view.value = 'map';
+      showToast('成功逃走了！');
+    }
     // ended === 'switch'：等待玩家选择换宠（force-switch 面板显示）
   } catch (err) {
     console.error('act 失败', err);
@@ -238,16 +266,31 @@ function winBattle() {
     touchRelation(sl, 'battle');
     touchRelation(sl, 'win');
     addEpisodic(sl, `在${mapInfo(state.wild.caughtMap ?? state.wild.caughtAt ?? '野外').name}战胜了野生的${state.wild.name}（Lv.${state.wild.level}）。`);
-  });  // 经验分享：其余队员 40%
+  });
+  // 经验分享：其余队员 40%；队友也可能跨过进化门槛（此前静默进化：不计数/不继承灵魂）
+  const sharedEvolved = [];
   for (const p of save.pets) {
-    if (p.uid !== mine.uid && save.partyIds.includes(p.uid)) gainExp(p, Math.round(exp * 0.4));
+    if (p.uid !== mine.uid && save.partyIds.includes(p.uid)) {
+      const r2 = gainExp(p, Math.round(exp * 0.4));
+      if (r2.evolvedTo) {
+        save.counters.evolutions++;
+        const soul2 = ensureSoul(r2.evolvedTo);
+        onEvolve(soul2, r2.evolvedTo.name, r2.evolvedTo.phase ?? 1);
+        sharedEvolved.push(r2.evolvedTo);
+      }
+    }
   }
   persist();
   if (r.evolvedTo) {
+    save.counters.evolutions++;
     // 灵魂可能尚未建立（老存档精灵直接跳到进化）——ensure 后再继承
     const soul = ensureSoul(r.evolvedTo);
     onEvolve(soul, r.evolvedTo.name, r.evolvedTo.phase ?? 1);
     celebrate('evolve', r.evolvedTo, `进化成了 ${r.evolvedTo.name}！灵魂也成长了`);
+  } else if (sharedEvolved.length) {
+    // 主战精灵没进化但队友进化了：也要庆祝（取最后一只）
+    const e = sharedEvolved[sharedEvolved.length - 1];
+    celebrate('evolve', e, `队伍中的 ${e.name} 进化了！`);
   } else if (r.leveled) {
     celebrate('levelup', mine, `${mine.name} 升到了 Lv.${mine.level}！${r.newMoves.length ? r.newMoves.join('，') : `获得 ${exp} 点经验`}`);
   } else {
@@ -262,7 +305,7 @@ function loseBattle() {
   const state = battle.value;
   const mine = petByUid(state.active.uid) ?? state.active;
   ensureSoul(mine);
-  gainExp(mine, 10 + mine.level * 2);
+  const r = gainExp(mine, 10 + mine.level * 2);
   // 灵魂成长：倒下也是共同经历（羁绊微升——共患难）
   updateSoul(mine.uid, (sl) => {
     touchRelation(sl, 'battle');
@@ -275,12 +318,26 @@ function loseBattle() {
     state.ended = 'switch';
     battleLog.value.push({ type: 'status', text: `${state.active.name} 倒下了，请选择下一只精灵！` });
     showToast(`${state.active.name} 倒下了！换其他精灵继续战斗`);
+    // 败北经验也可能触发进化（此前静默进化：不计数/不继承灵魂/不庆祝）
+    if (r.evolvedTo) {
+      save.counters.evolutions++;
+      const soul = ensureSoul(r.evolvedTo);
+      onEvolve(soul, r.evolvedTo.name, r.evolvedTo.phase ?? 1);
+      celebrate('evolve', r.evolvedTo, `虽然输了，但 ${r.evolvedTo.name} 进化了！`);
+    }
     return; // 保持 battle 状态，force-switch 面板出现
   }
   // 全军覆没：休闲模式原地满血复活
   for (const p of save.pets) p.hp = undefined;
   persist();
-  showToast('全军覆没…精灵们休息了一会儿又满血复活（休闲模式）');
+  if (r.evolvedTo) {
+    save.counters.evolutions++;
+    const soul = ensureSoul(r.evolvedTo);
+    onEvolve(soul, r.evolvedTo.name, r.evolvedTo.phase ?? 1);
+    celebrate('evolve', r.evolvedTo, `虽然输了，但 ${r.evolvedTo.name} 进化了！`);
+  } else {
+    showToast('全军覆没…精灵们休息了一会儿又满血复活（休闲模式）');
+  }
   battle.value = null;
   wild.value = null;
   view.value = 'map';
@@ -323,6 +380,9 @@ function releasePet(pet) {
   if (!confirm(`确定放归 ${pet.name} 吗？此操作不可撤销。`)) return;
   save.pets = save.pets.filter(p => p.uid !== pet.uid);
   save.partyIds = save.partyIds.filter(id => id !== pet.uid);
+  // 同步清理灵魂档案与聊天记录（避免残留孤儿数据）
+  forgetSoul(pet.uid);
+  forgetChat(pet.uid);
   persist();
   showToast(`${pet.name} 回归了大自然`);
 }
@@ -335,7 +395,11 @@ function evExp(pet) {
 
 // ---- 存档导入导出 ----
 function doExport() {
-  const blob = new Blob([exportSaveText(JSON.parse(JSON.stringify({ ...save, version: 1 })))], { type: 'application/json' });
+  // 存档 + 灵魂档案 + 聊天记录一起导出（人格/羁绊/记忆不丢失）
+  const blob = new Blob([exportSaveText(JSON.parse(JSON.stringify({ ...save, version: 1 })), {
+    souls: exportSouls(),
+    chats: exportChats(),
+  })], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -349,9 +413,12 @@ async function onImportFile(e) {
   if (!file) return;
   try {
     const text = await file.text();
-    const data = importSaveText(text);
+    const { save: data, souls, chats } = importSaveText(text);
     if (!confirm('导入会覆盖当前存档，确定继续吗？')) return;
     Object.assign(save, data);
+    // 恢复灵魂与聊天（有则覆盖，无则保留导入文件中原样内容）
+    if (souls) importSouls(souls);
+    if (chats) importChats(chats);
     persist();
     showToast('导入成功');
   } catch (err) {
@@ -363,7 +430,8 @@ async function onImportFile(e) {
 
 function doReset() {
   if (!confirm('确定清空全部存档吗？此操作不可撤销！')) return;
-  localStorage.removeItem('funny-pets-save-v1');
+  // 一并清理灵魂档案与聊天记录（与存档同生命周期，避免残留脏数据）
+  clearAllStorage();
   location.reload();
 }
 
@@ -380,7 +448,9 @@ onMounted(() => { view.value = 'map'; });
       </div>
       <nav class="tabs">
         <button :class="{ active: view === 'map' }" @click="view = 'map'; wild = null">地图</button>
-        <button :class="{ active: view === 'encounter' || view === 'battle' }" :disabled="!wild && !battle">相遇</button>
+        <button :class="{ active: view === 'encounter' || view === 'battle' }"
+          :disabled="!wild && !battle"
+          @click="if (battle) view = 'battle'; else if (wild) view = 'encounter'">相遇</button>
         <button :class="{ active: view === 'dex' }" @click="view = 'dex'">图鉴 <em>{{ save.pets.length }}</em></button>
         <button :class="{ active: view === 'settings' }" @click="view = 'settings'">设置</button>
       </nav>

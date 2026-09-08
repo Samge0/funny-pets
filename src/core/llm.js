@@ -116,6 +116,7 @@ export async function tauntWithSoul(cfg, pet, soul, scene, signal, onChunk) {
       } catch { /* 忽略不完整 SSE 行 */ }
     }
   }
+  // 流式过程中 __STATE__ 行可能已被增量推给 UI；返回前从全文剥掉，最终文本由调用方覆盖
   return parseSoulReply(full);
 }
 

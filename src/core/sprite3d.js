@@ -10,6 +10,8 @@ const BODY_TYPES = ['quadruped', 'bipedal', 'avian', 'serpent', 'aquatic', 'moch
 
 // 由 seed 决定体态（同类内再由其余维度变化）
 export function bodyTypeOf(pet) {
+  // LLM 生成的精灵显式指定体态时优先采纳（否则字段被静默丢弃）
+  if (BODY_TYPES.includes(pet.bodyType)) return pet.bodyType;
   const rng = mulberry32((pet.seed ^ 0x9e3779b9) >>> 0);
   const idx = Math.floor(rng() * BODY_TYPES.length);
   return BODY_TYPES[idx];
@@ -17,6 +19,8 @@ export function bodyTypeOf(pet) {
 
 // 属性 → 体态偏置：让水族多出现在水系、鸟禽多出现在飞行系等（40% 概率采纳）
 export function bodyTypeBiased(pet) {
+  // LLM 生成的精灵显式指定体态时优先采纳（否则字段被静默丢弃）
+  if (BODY_TYPES.includes(pet.bodyType)) return pet.bodyType;
   const rng = mulberry32((pet.seed ^ 0x9e3779b9) >>> 0);
   const primary = pet.types[0];
   const bias = {

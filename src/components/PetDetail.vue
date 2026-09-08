@@ -76,7 +76,7 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import { llmConfig, showToast, rarityInfo } from '../store.js';
 import { isLlmConfigured, chatWithSoul } from '../core/llm.js';
-import { chatOf, appendChat, maybeCompress } from '../chat.js';
+import { chatOf, appendChat, maybeCompress, persistChat } from '../chat.js';
 import { statsAt } from '../core/evolve.js';
 import { ensureSoul, traitLabels, updateSoul, driftTraits, addProfileFact, touchRelation } from '../core/soul.js';
 import Pet3D from './Pet3D.vue';
@@ -136,7 +136,10 @@ async function send() {
   const text = draft.value.trim();
   if (!text || !llmReady.value || typing.value || !props.pet) return;
   const petData = { ...props.pet };
+  // 深拷贝快照：soul 是同一可变引用，LLM 返回后 applyState 已把 affinity/drift 写入，
+  // 再把它传给 maybeCompress 会读到"未来状态"，且异步压缩可能覆盖并发修改
   const soulSnapshot = JSON.parse(JSON.stringify(soul.value));
+  const uid = petData.uid;
   draft.value = '';
   appendChat(petData.uid, 'user', text);
 
@@ -149,7 +152,8 @@ async function send() {
     appendChat(petData.uid, 'assistant', result.body);
 
     applyState(result.state, petData);
-    maybeCompress(petData.uid, llmConfig, petData, soul.value);
+    // 压缩用最新的 soul（applyState 已生效）与最新消息，避免旧快照竞态
+    maybeCompress(uid, llmConfig, petData, ensureSoul(petData));
   } catch (err) {
     console.warn('聊天失败', err);
     showToast(`聊天失败：${err.message}`);
@@ -164,7 +168,7 @@ function clearChat() {
   if (!confirm(`清空与 ${props.pet.name} 的全部聊天记录？（灵魂档案与长期记忆保留）`)) return;
   const c = chatOf(props.pet.uid);
   c.messages = []; c.total = 0; c.compressedAt = 0;
-
+  persistChat(); // 立即落盘（此前漏写：仅改缓存，刷新后聊天记录复活）
   showToast('聊天记录已清空（长期记忆保留）');
 }
 </script>
