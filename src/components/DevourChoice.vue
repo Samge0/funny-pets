@@ -121,12 +121,14 @@ const BODY_MAP = { round: 'mochi', pear: 'bipedal', tall: 'bipedal', blob: 'quad
 const previewPet = computed(() => {
   const look = { ...offer.currentLook };
   const extraParts = [...(offer.currentExtraParts ?? [])];
+  let bodySwallowed = false; // 是否勾选了 body 吞噬（只有此时才切换骨架）
   offer.parts.forEach((pp, pi) => {
     if (!takePart[pi]) return;
     const cur = look[pp.part];
     const isEmpty = cur == null || cur === 'none' || cur === '';
     if (pp.part === 'body') {
       look.body = pp.theirs;
+      bodySwallowed = true;
     } else if (isEmpty) {
       look[pp.part] = pp.theirs;           // 长出
     } else {
@@ -142,14 +144,21 @@ const previewPet = computed(() => {
     level: 5,
     phase: offer.petPhase ?? 0,
   };
-  if (look.body && BODY_MAP[look.body]) pet.bodyType = BODY_MAP[look.body];
-  else if (offer.petBodyType) pet.bodyType = offer.petBodyType;
+  // 骨架：勾了 body 吞噬才映射新骨架；否则严格保留出战宠当前骨架
+  // （此前 look.body='round' 会被误映射成 mochi——取消勾选后骨架漂移，看起来像变成了对面精灵）
+  if (bodySwallowed && BODY_MAP[look.body]) pet.bodyType = BODY_MAP[look.body];
+  else pet.bodyType = offer.petBodyType ?? undefined;
   return pet;
 });
 const previewTag = computed(() => JSON.stringify(previewPet.value.look) + '|' + JSON.stringify(previewPet.value.extraParts ?? []));
 const changedParts = computed(() =>
   offer.parts.filter((pp, pi) => takePart[pi]).map(pp => `${partLabel(pp.part)}${partMode(pp) === '➕ 叠加' ? '叠加' : '→'}${valueLabel(pp.part, pp.theirs)}`)
 );
+
+// 测试探针：暴露预览宠数据（E2E 验证骨架不漂移用；生产无副作用）
+if (typeof window !== 'undefined') {
+  watch(previewPet, p => { window.__devourPreviewPet = p; }, { immediate: true });
+}
 
 function confirmAll() {
   const movePicks = [];

@@ -8,6 +8,7 @@ import { ensureSoul, updateSoul, driftTraits, touchRelation, addEpisodic, onEvol
 import { forgetChat } from './chat.js';
 import { newBattleState, battleTurn, catchChance } from './core/battle.js';
 import { statsAt, offerDevourMoves, offerDevourParts, applyDevour } from './core/evolve.js';
+import { bodyTypeBiased } from './core/sprite3d.js';
 import { TYPE_COLORS } from './data/types.js';
 import { exportSaveText, importSaveText, clearAllStorage } from './storage.js';
 import { exportSouls, importSouls } from './core/soul.js';
@@ -335,7 +336,9 @@ async function winBattle() {
         seed: mine.seed,
         petTypes: mine.types,
         petPhase: mine.phase ?? 0,
-        petBodyType: mine.bodyType ?? null,
+        // 出战宠真实骨架：存量精灵无 bodyType 字段时按 bodyTypeBiased 定死传入，
+        // 保证预览骨架与游戏内渲染完全一致（否则重掷 bias 会漂移成别的骨架）
+        petBodyType: mine.bodyType ?? bodyTypeBiased(mine),
         currentExtraParts: [...(mine.extraParts ?? [])],
         defeatedName: state.wild.name,
         moves: moveOffers,
