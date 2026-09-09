@@ -192,6 +192,20 @@ function wildSoulOf(pet) {
   return wildSoulCache.get(pet.uid ?? pet.seed);
 }
 
+// 流式文本的安全可见部分：__STATE__ 标记（含被 delta 拆碎的尾部前缀）不上屏
+// 例：raw="__STAT" 扣住全部；raw="打得好！__STATE__{\"a" 只显示"打得好！"；
+//     raw="__STATE__{\"affinityDelta\":2,\"drift\":{\"warm" 截断 JSON 全部隐藏
+function visibleTauntText(raw) {
+  const MARK = '__STATE__';
+  const idx = raw.indexOf(MARK);
+  if (idx >= 0) return raw.slice(0, idx).trimEnd();
+  // 尾部可能是标记前缀（最长 9 字符）：扣住待判，避免碎片闪现
+  for (let len = Math.min(MARK.length - 1, raw.length); len > 0; len--) {
+    if (raw.endsWith(MARK.slice(0, len))) return raw.slice(0, raw.length - len);
+  }
+  return raw;
+}
+
 // 流式渲染一个气泡（SSE 增量 + __STATE__ 行过滤 + 结束后淡出）
 function streamTaunt(bubble, attacker, defender, evt, soul, isWild) {
   const trainerTitle = soul.relation.title;
@@ -218,8 +232,9 @@ function streamTaunt(bubble, attacker, defender, evt, soul, isWild) {
   tauntWithSoul(llmConfig, attacker, soul, scene, abort.signal,
     (delta) => {
       bubble._raw = (bubble._raw ?? '') + delta;
-      const idx = bubble._raw.indexOf('__STATE__');
-      bubble.text = idx >= 0 ? bubble._raw.slice(0, idx).trimEnd() : bubble._raw;
+      // 状态标记可能被流式 delta 拆成碎片（如 "__STAT"+"E__{"）分批到达：
+      // 尾部若疑似标记前缀，先扣住不上屏，等下个 delta 再判定；标记一旦出现即截断
+      bubble.text = visibleTauntText(bubble._raw);
     })
     .then(result => {
       bubble._raw = '';

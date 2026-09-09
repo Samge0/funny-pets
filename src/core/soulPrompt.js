@@ -50,24 +50,31 @@ __STATE__{"affinityDelta": 数字-3到3, "drift": {"warmth": -1到1的小数, "e
 }
 
 // ---- 解析 LLM 输出：正文 + 状态行分离 ----
+// 状态行以 __STATE__ 标记开头。标记之后的一切（无论 JSON 是否完整）都不属于正文——
+// 此前正则要求 JSON 完整闭合（\}\s*$）才剥离，maxTokens 截断时残缺 JSON 整段泄漏进气泡
 export function parseSoulReply(text) {
   let body = String(text ?? '').trim();
   const state = { affinityDelta: 0, drift: null, memory: null };
-  const m = body.match(/__STATE__\s*(\{[\s\S]*?\})\s*$/);
+  const m = body.match(/__STATE__/);
   if (m) {
-    body = body.slice(0, m.index).trim();
-    try {
-      const raw = JSON.parse(m[1]);
-      if (typeof raw.affinityDelta === 'number') state.affinityDelta = Math.max(-3, Math.min(3, raw.affinityDelta));
-      if (raw.drift && typeof raw.drift === 'object') {
-        state.drift = {};
-        for (const k of ['warmth', 'energy', 'pride', 'curiosity']) {
-          const v = raw.drift[k];
-          if (typeof v === 'number' && Math.abs(v) <= 1) state.drift[k] = v;
+    const statePart = body.slice(m.index);           // 标记起的全部内容 = 状态区
+    body = body.slice(0, m.index).trim();            // 正文 = 标记之前
+    // 尽力解析状态 JSON（残缺只丢状态数据，不影响正文）
+    const jm = statePart.match(/\{[\s\S]*\}?\s*$/);
+    if (jm) {
+      try {
+        const raw = JSON.parse(jm[0].replace(/\}\s*$/, '}'));
+        if (typeof raw.affinityDelta === 'number') state.affinityDelta = Math.max(-3, Math.min(3, raw.affinityDelta));
+        if (raw.drift && typeof raw.drift === 'object') {
+          state.drift = {};
+          for (const k of ['warmth', 'energy', 'pride', 'curiosity']) {
+            const v = raw.drift[k];
+            if (typeof v === 'number' && Math.abs(v) <= 1) state.drift[k] = v;
+          }
         }
-      }
-      if (typeof raw.memory === 'string' && raw.memory.trim()) state.memory = raw.memory.trim().slice(0, 80);
-    } catch { /* 状态行损坏只丢状态不丢正文 */ }
+        if (typeof raw.memory === 'string' && raw.memory.trim()) state.memory = raw.memory.trim().slice(0, 80);
+      } catch { /* 状态 JSON 被截断/损坏：丢状态不丢正文 */ }
+    }
   }
   return { body: body.slice(0, 200), state };
 }
