@@ -16,8 +16,25 @@
             <p class="live-sub">👆 可拖动旋转查看</p>
           </div>
 
-          <!-- 右：候选列表 -->
+          <!-- 右：候选列表（部件在前：与左侧预览联动最直观；技能在后） -->
           <div class="choices-pane">
+            <!-- 部件候选 -->
+            <div v-if="offer.parts.length" class="devour-section">
+              <h4>🎨 外观部件（勾选实时预览）</h4>
+              <div v-for="(pp, pi) in offer.parts" :key="pp.part + pp.theirs" class="devour-item" :class="{ picked: takePart[pi] }">
+                <label class="devour-take">
+                  <input type="checkbox" v-model="takePart[pi]" />
+                  <span class="part-name">{{ partLabel(pp.part) }}</span>
+                  <span class="part-mode-tag">{{ partMode(pp) }}</span>
+                  <span class="part-preview">
+                    <img class="preview-img" :src="previewSvg(pp.part, offer.currentLook[pp.part])" alt="吞前" width="48" height="48" />
+                    <span class="preview-arrow">→</span>
+                    <img class="preview-img after" :src="previewSvg(pp.part, pp.theirs)" alt="吞后" width="48" height="48" />
+                  </span>
+                </label>
+              </div>
+            </div>
+
             <!-- 技能候选 -->
             <div v-if="offer.moves.length" class="devour-section">
               <h4>⚔️ 技能</h4>
@@ -37,23 +54,6 @@
                     替换「{{ cm.name }}」
                   </label>
                 </div>
-              </div>
-            </div>
-
-            <!-- 部件候选 -->
-            <div v-if="offer.parts.length" class="devour-section">
-              <h4>🎨 外观部件（勾选实时预览）</h4>
-              <div v-for="(pp, pi) in offer.parts" :key="pp.part + pp.theirs" class="devour-item" :class="{ picked: takePart[pi] }">
-                <label class="devour-take">
-                  <input type="checkbox" v-model="takePart[pi]" />
-                  <span class="part-name">{{ partLabel(pp.part) }}</span>
-                  <span class="part-mode-tag">{{ partMode(pp) }}</span>
-                  <span class="part-preview">
-                    <img class="preview-img" :src="previewSvg(pp.part, offer.currentLook[pp.part])" alt="吞前" width="48" height="48" />
-                    <span class="preview-arrow">→</span>
-                    <img class="preview-img after" :src="previewSvg(pp.part, pp.theirs)" alt="吞后" width="48" height="48" />
-                  </span>
-                </label>
               </div>
             </div>
           </div>

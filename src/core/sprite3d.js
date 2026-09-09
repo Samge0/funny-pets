@@ -156,6 +156,16 @@ function makeBodyPattern(M, L, radius, opts = {}) {
       band.position.set(0, y0 + (i - (n - 1) / 2) * radius * 0.5, 0);
       g.add(band);
     }
+  } else if (L.pattern === 'belly') {
+    // 肚皮纹：胸前大片浅色圆（此前 avian/aquatic/mochi 身体自带固定 belly——吞 belly 无效果；
+    // 现统一由此分支渲染，accent 色与体色形成对比）
+    const belly = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.92, 18, 14), M.belly);
+    belly.scale.set(0.82, 1.0, 0.45);
+    belly.position.set(0, y0, radius * 0.55);
+    g.add(belly);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(radius * 0.8, radius * 0.05, 8, 20), M.accent);
+    rim.position.set(0, y0, radius * 0.72);
+    g.add(rim);
   }
   return g;
 }
@@ -723,10 +733,7 @@ export function buildPet3D(pet) {
     const body = new THREE.Mesh(new THREE.SphereGeometry(0.55, 26, 20), M.body);
     body.scale.set(0.9 * L.bodyW, 1.2 * L.bodyH, 0.9 * L.bodyW);
     root.add(body);
-    const belly = new THREE.Mesh(new THREE.SphereGeometry(0.42, 20, 16), M.belly);
-    belly.scale.set(0.8, 1.05, 0.5);
-    belly.position.set(0, -0.05, 0.3);
-    root.add(belly);
+    // 肚皮/花纹统一由 makeBodyPattern 渲染（此前固定 belly 片导致吞 belly 无效果）
     // 花纹（avian 此前无 spots/stripe 渲染）
     root.add(makeBodyPattern(M, L, 0.45));
 
@@ -951,10 +958,7 @@ export function buildPet3D(pet) {
     const body = new THREE.Mesh(new THREE.SphereGeometry(0.55, 26, 20), M.body);
     body.scale.set(1.35 * L.bodyW, 0.95 * L.bodyH, 0.85 * L.bodyW);
     root.add(body);
-    const belly = new THREE.Mesh(new THREE.SphereGeometry(0.44, 20, 16), M.belly);
-    belly.scale.set(1.2, 0.8, 0.5);
-    belly.position.y = -0.12;
-    root.add(belly);
+    // 肚皮/花纹统一由 makeBodyPattern 渲染（此前固定 belly 片导致吞 belly 无效果）
 
     // 背鳍
     const dorsal = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.42, 4), M.type);
@@ -1081,10 +1085,7 @@ export function buildPet3D(pet) {
     body.scale.set(1.15 * L.bodyW, 0.95 * L.bodyH, L.bodyW);
     body.position.y = -0.1;
     root.add(body);
-    const belly = new THREE.Mesh(new THREE.SphereGeometry(0.46, 20, 16), M.belly);
-    belly.scale.set(0.95, 0.8, 0.5);
-    belly.position.set(0, -0.22, 0.42);
-    root.add(belly);
+    // 肚皮/花纹统一由 makeBodyPattern 渲染（此前固定 belly 片导致吞 belly 无效果）
     // 花纹（mochi 此前无 spots/stripe 渲染）
     root.add(makeBodyPattern(M, L, 0.52, { y0: 0.22 }));
 
