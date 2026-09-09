@@ -18,7 +18,7 @@ import Celebration from './components/Celebration.vue';
 import PetDetail from './components/PetDetail.vue';
 import DevourChoice from './components/DevourChoice.vue';
 import GlobalToast from './components/GlobalToast.vue';
-import { readSharedFromHash, shareUrl } from './core/sharePet.js';
+import { readSharedFromHash } from './core/sharePet.js';
 
 const view = ref('map'); // map | encounter | battle | dex | settings | shared
 const spawning = ref(false);
@@ -40,37 +40,20 @@ const BALLS_MAX = 5;
 
 // ---- 分享观赏模式（#p=...）：只读 3D 展示 + 可挑战；禁聊天 ----
 const sharedPet = ref(null);   // 分享来的宠物（解码后）
-const sharedViewed = ref(false); // 已看过提示（避免重复 toast）
 (function initShared() {
   const shared = readSharedFromHash();
-  if (typeof window !== 'undefined') window.__initSharedDebug = { hash: location.hash.slice(0, 40), got: !!shared };
   if (shared) {
     sharedPet.value = shared.pet;
     view.value = 'shared';
   }
 })();
-function copyShareLink(pet) {
-  const url = shareUrl(pet);
-  const done = () => showToast('分享链接已复制！发给朋友，TA 可以观赏或挑战这只精灵', 3200);
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(url).then(done).catch(() => fallbackCopy(url, done));
-  } else fallbackCopy(url, done);
-}
-function fallbackCopy(text, done) {
-  const ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.position = 'fixed'; ta.style.opacity = '0';
-  document.body.appendChild(ta);
-  ta.select();
-  try { document.execCommand('copy'); done(); } catch { showToast('复制失败，请手动复制地址栏链接', 2600); }
-  ta.remove();
-}
 // 挑战分享宠：查看者用自己的出战宠 vs 分享宠（复用战斗引擎；
 // 分享宠 as wild——挑战结果只影响查看者本地经验，不写分享者存档天然成立）
 function challengeShared() {
   if (!sharedPet.value) return;
   if (!party.value.length) {
-    showToast('你还没有精灵！先去捕捉一只再来挑战');
+    // 查看者还没有精灵：引导去游戏本体（而非只弹 toast 让人摸不着头脑）
+    showToast('你还没有精灵！点「返回游戏」→ 点地图去捕捉一只，再回来挑战', 4000);
     return;
   }
   const healthy = party.value.filter(p => p.hp > 0);
@@ -550,6 +533,14 @@ function loseBattle() {
 
 // 捕捉成功嗨点
 function succeedCatch() {
+  // 防御：挑战赛（好友分享宠）不允许被捕捉（按钮已隐藏，此为引擎级兜底）
+  if (battleFromChallenge.value) {
+    battleFromChallenge.value = false;
+    battle.value = null;
+    view.value = sharedPet.value ? 'shared' : 'map';
+    showToast('好友的精灵不能被捕捉！');
+    return;
+  }
   const caught = JSON.parse(JSON.stringify(battle.value?.wild ?? wild.value));
   const adopted = adoptPet(caught);
   // 新伙伴的灵魂在此刻诞生（persona 按 seed 掷点固化）
@@ -696,7 +687,9 @@ onMounted(() => { if (!sharedPet.value) view.value = 'map'; });
       </div>
       <nav class="tabs">
         <button :class="{ active: view === 'map' }" @click="view = 'map'; wild = null">地图</button>
-        <button :class="{ active: view === 'encounter' || view === 'battle' }"
+        <!-- 分享模式：相遇位变「分享宠」入口（查看者点地图/图鉴后还能回来挑战） -->
+        <button v-if="sharedPet" :class="{ active: view === 'shared' }" @click="view = 'shared'">🐾 分享宠</button>
+        <button v-else :class="{ active: view === 'encounter' || view === 'battle' }"
           :disabled="!wild && !battle"
           @click="if (battle) view = 'battle'; else if (wild) view = 'encounter'">相遇</button>
         <button :class="{ active: view === 'dex' }" @click="view = 'dex'">图鉴 <em>{{ save.pets.length }}</em></button>
@@ -825,7 +818,8 @@ onMounted(() => { if (!sharedPet.value) view.value = 'map'; });
             @click="act({ type: 'move', moveIndex: i })">
             {{ mv.name }}<small>{{ mv.power ? `威力 ${mv.power}` : '变化' }}</small>
           </button>
-          <button class="ball" :disabled="battleBusy || !!battle.ended || showSwitchPanel" @click="act({ type: 'ball' })">
+          <!-- 挑战赛（好友分享宠）不能丢球捕捉——那是别人的精灵，捕捉语义不成立 -->
+          <button v-if="!battleFromChallenge" class="ball" :disabled="battleBusy || !!battle.ended || showSwitchPanel" @click="act({ type: 'ball' })">
             丢球 <small>{{ Math.round(catchChance(battle.wild) * 100) }}%</small>
           </button>
           <button class="switch-toggle" :disabled="battleBusy || !!battle.ended" @click="showSwitchPanel = !showSwitchPanel" title="切换出战精灵（换上后对方会趁机攻击）">
