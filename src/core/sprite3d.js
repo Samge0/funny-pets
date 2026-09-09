@@ -242,21 +242,39 @@ function makeTail(M, L, x, y, z, scale = 1) {
     const t = new THREE.Mesh(new THREE.SphereGeometry(0.16 * scale, 12, 10), M.accent);
     t.position.set(x, y, z);
     g.add(t);
+    // 小短绒尖
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.07 * scale, 0.16 * scale, 8), M.accent);
+    tip.position.set(x, y + 0.14 * scale, z);
+    g.add(tip);
   } else if (L.tail === 'curl') {
     const t = new THREE.Mesh(new THREE.TorusGeometry(0.2 * scale, 0.06 * scale, 8, 18, Math.PI * 1.6), M.accent);
     t.position.set(x, y + 0.08, z);
     t.rotation.y = Math.PI / 2;
     g.add(t);
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.08 * scale, 10, 8), M.accent);
+    tip.position.set(x, y + 0.3 * scale, z);
+    g.add(tip);
   } else if (L.tail === 'fluff') {
+    // 三球绒毛扇形
     const t = new THREE.Mesh(new THREE.SphereGeometry(0.28 * scale, 14, 12), M.belly);
     t.position.set(x, y + 0.1, z - 0.06);
     g.add(t);
+    const f2 = new THREE.Mesh(new THREE.SphereGeometry(0.18 * scale, 12, 10), M.belly);
+    f2.position.set(x, y + 0.3 * scale, z - 0.02);
+    g.add(f2);
+    const f3 = new THREE.Mesh(new THREE.SphereGeometry(0.13 * scale, 10, 8), M.belly);
+    f3.position.set(x, y + 0.42 * scale, z + 0.02);
+    g.add(f3);
   } else if (L.tail === 'spark') {
     const t = new THREE.Mesh(new THREE.OctahedronGeometry(0.18 * scale), M.glow);
     t.scale.set(0.5, 1.4, 0.5);
     t.position.set(x, y + 0.15, z);
     t.name = 'sparkTail';
     g.add(t);
+    const z2 = new THREE.Mesh(new THREE.OctahedronGeometry(0.1 * scale), M.glow);
+    z2.scale.set(0.5, 1.4, 0.5);
+    z2.position.set(x, y + 0.38 * scale, z);
+    g.add(z2);
   }
   return g;
 }
@@ -316,9 +334,10 @@ export function buildPet3D(pet) {
   else if (bodyType === 'aquatic') buildAquatic();
   else buildMochi();
 
-  // ---- 共通：进化相位 ----
-  group.scale.setScalar((1 + phase * 0.13) * (0.95 + rng() * 0.08));
+  // ---- 共通：进化相位（越来越炫酷）----
+  group.scale.setScalar((1 + phase * 0.16) * (0.95 + rng() * 0.08));
   if (phase > 0) {
+    // 地面光环（phase2 双环更炫）
     const halo = new THREE.Mesh(
       new THREE.TorusGeometry(1.3 + phase * 0.15, 0.045, 8, 42),
       M.glow
@@ -328,6 +347,45 @@ export function buildPet3D(pet) {
     halo.name = 'halo';
     group.add(halo);
     parts.halo = halo;
+    if (phase >= 2) {
+      const halo2 = new THREE.Mesh(
+        new THREE.TorusGeometry(1.62, 0.028, 8, 48),
+        M.glow
+      );
+      halo2.rotation.x = Math.PI / 2;
+      halo2.position.y = -1.0;
+      halo2.name = 'halo2';
+      group.add(halo2);
+    }
+    // 环绕光点（orbitDots：update 中公转）
+    const dotCount = 3 + phase * 2;
+    const dots = new THREE.Group();
+    dots.name = 'orbitDots';
+    for (let i = 0; i < dotCount; i++) {
+      const dot = new THREE.Mesh(new THREE.OctahedronGeometry(0.055 + phase * 0.015), M.glow);
+      const a = (i / dotCount) * Math.PI * 2;
+      dot.position.set(Math.cos(a) * (1.05 + phase * 0.12), 0.15 + (i % 2) * 0.5, Math.sin(a) * (1.05 + phase * 0.12));
+      dots.add(dot);
+    }
+    group.add(dots);
+    parts.orbitDots = dots;
+    // 二阶「皇」：头顶金冠（三点冠）
+    if (phase >= 2) {
+      const crown = new THREE.Group();
+      crown.name = 'crown';
+      for (let i = -1; i <= 1; i++) {
+        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.2 + Math.abs(i) === 0 ? 0.26 : 0.2, 6), toonMat(new THREE.Color(0xf4c531)));
+        spike.position.set(i * 0.12, 0.1 + (i === 0 ? 0.05 : 0), 0);
+        crown.add(spike);
+      }
+      const band = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.035, 8, 18), toonMat(new THREE.Color(0xf4c531)));
+      band.rotation.x = Math.PI / 2;
+      crown.add(band);
+      // 挂在头顶最高处（各骨架头位不同，挂在 group 顶部 y≈1.55 位置由缩放承担）
+      crown.position.set(0, 1.72, 0.1);
+      group.add(crown);
+      parts.crown = crown;
+    }
   }
 
   // ---- 动画 ----
@@ -338,6 +396,11 @@ export function buildPet3D(pet) {
     if (parts.tail) parts.tail.rotation.y = Math.sin(t * 2.2) * 0.35;
     if (parts.head) parts.head.rotation.z = Math.sin(t * 1.1) * 0.06;
     if (parts.halo) { parts.halo.rotation.z = t * 1.2; }
+    // 进化环绕光点公转 + 上下浮动
+    if (parts.orbitDots) {
+      parts.orbitDots.rotation.y = t * 0.8;
+      parts.orbitDots.children.forEach((d, i) => { d.position.y = 0.15 + (i % 2) * 0.5 + Math.sin(t * 2.2 + i) * 0.08; });
+    }
   };
   // =============== 骨架实现 ===============
 
@@ -382,8 +445,37 @@ export function buildPet3D(pet) {
       }
     }
     headGroup.add(makeEars(M, L, headR, -1), makeEars(M, L, headR, 1));
+    // 配饰（quadruped 此前完全不渲染——吞了配饰无效果；头角改为由 accessory=horn 驱动）
+    if (L.accessory === 'gem') {
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.12), toonMat(new THREE.Color(0x7fd4e8)));
+      gem.position.set(0, headR * 0.95, headR * 0.45);
+      headGroup.add(gem);
+    } else if (L.accessory === 'flower') {
+      for (let p = 0; p < 5; p++) {
+        const petal = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), toonMat(new THREE.Color(0xe87a9a)));
+        const a = (p / 5) * Math.PI * 2;
+        petal.position.set(Math.cos(a) * 0.08, headR * 1.0, Math.sin(a) * 0.08 + headR * 0.3);
+        headGroup.add(petal);
+      }
+      const core = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), toonMat(new THREE.Color(0xf4d03c)));
+      core.position.set(0, headR * 1.0, headR * 0.3);
+      headGroup.add(core);
+    } else if (L.accessory === 'leaf') {
+      const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), toonMat(new THREE.Color(0x5a9830)));
+      leaf.scale.set(0.3, 0.75, 1);
+      leaf.rotation.z = 0.5;
+      leaf.position.set(0.06, headR * 1.05, headR * 0.25);
+      headGroup.add(leaf);
+    } else if (L.accessory === 'horn') {
+      for (const s of [-1, 1]) {
+        const horn = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.26 + phase * 0.1, 8), M.type);
+        horn.position.set(headR * 0.35 * s, headR * 0.95, 0);
+        horn.rotation.z = 0.3 * s;
+        headGroup.add(horn);
+      }
+    }
     // 头角
-    if (rng() < 0.35) {
+    if (rng() < 0.35 && L.accessory === 'none') {
       for (const s of [-1, 1]) {
         const horn = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.26 + phase * 0.1, 8), M.type);
         horn.position.set(headR * 0.35 * s, headR * 0.95, 0);
@@ -506,19 +598,28 @@ export function buildPet3D(pet) {
       for (let p = 0; p < 5; p++) {
         const petal = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 8), toonMat(new THREE.Color(0xe87a9a)));
         const a = (p / 5) * Math.PI * 2;
-        petal.position.set(Math.cos(a) * 0.09, headR * 0.98, Math.sin(a) * 0.09 + headR * 0.2);
+        petal.position.set(Math.cos(a) * 0.1, headR * 0.82, Math.sin(a) * 0.09 + headR * 0.55);
         headGroup.add(petal);
       }
       const core = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), toonMat(new THREE.Color(0xf4d03c)));
-      core.position.set(0, headR * 0.98, headR * 0.2);
+      core.position.set(0, headR * 0.82, headR * 0.55);
       headGroup.add(core);
     }
     if (L.accessory === 'leaf') {
-      const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), toonMat(new THREE.Color(0x5a9830)));
-      leaf.scale.set(0.3, 0.75, 1);
+      const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), toonMat(new THREE.Color(0x7ec850)));
+      leaf.scale.set(0.32, 0.85, 1);
       leaf.rotation.z = 0.5;
-      leaf.position.set(0.06, headR * 1.02, 0);
+      leaf.position.set(0.1, headR * 1.02, headR * 0.35);
       headGroup.add(leaf);
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.14, 6), toonMat(new THREE.Color(0x4a7830)));
+      stem.position.set(0.04, headR * 0.92, headR * 0.28);
+      stem.rotation.z = 0.35;
+      headGroup.add(stem);
+    } else if (L.accessory === 'horn') {
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.4, 8), M.type);
+      horn.position.set(0, headR * 0.98, headR * 0.5);
+      horn.rotation.x = 0.3;
+      headGroup.add(horn);
     }
     root.add(headGroup);
     parts.head = headGroup;
@@ -547,8 +648,14 @@ export function buildPet3D(pet) {
       parts.legs.push(hip);
     }
 
-    parts.tail = makeTail(M, L, 0, -0.35, -0.5, 0.9);
-    root.add(parts.tail);
+    // 尾（侧向翘出——正面/侧面轮廓都可见，各款差异一目了然）
+    const tailPivot = new THREE.Group();
+    tailPivot.position.set(0.34, 0.1, -0.3);
+    tailPivot.rotation.z = -1.05; // 向右上侧甩出
+    const tail = makeTail(M, L, 0, 0, 0, 1.6);
+    tailPivot.add(tail);
+    parts.tail = tailPivot;
+    root.add(tailPivot);
 
     if (rng() < 0.3) root.add(makeSpikes(M, L, 2 + phase, t => [0, -t * 0.4], 0.55));
 
@@ -587,17 +694,57 @@ export function buildPet3D(pet) {
     crest.position.set(0, headR * 1.05, 0);
     crest.rotation.z = -0.2;
     headGroup.add(crest);
-    // 鳍耳 -> 鸟用翅形耳羽
-    if (L.ears === 'fin' || L.ears === 'long') {
+    // 鳍耳 -> 鸟用翅形耳羽（全耳朵款式渲染：吞来的耳朵必须可见）
+    if (L.ears !== 'none') {
       for (const s of [-1, 1]) {
-        const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.2, 8), M.type);
-        tuft.position.set(headR * 0.6 * s, headR * 0.8, 0);
-        tuft.rotation.z = 0.6 * s;
+        let tuft;
+        if (L.ears === 'fin' || L.ears === 'long') {
+          tuft = new THREE.Mesh(new THREE.ConeGeometry(0.06, L.ears === 'long' ? 0.32 : 0.2, 8), M.type);
+          tuft.position.set(headR * 0.6 * s, headR * 0.8, 0);
+          tuft.rotation.z = 0.6 * s;
+        } else if (L.ears === 'pointy') {
+          tuft = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.22, 8), M.body);
+          tuft.position.set(headR * 0.7 * s, headR * 0.85, 0);
+          tuft.rotation.z = -0.5 * s;
+        } else { // round
+          tuft = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), M.body);
+          tuft.position.set(headR * 0.75 * s, headR * 0.7, 0);
+        }
         headGroup.add(tuft);
       }
     }
+    // 配饰（avian 此前完全不渲染——吞了配饰无效果）
+    if (L.accessory === 'gem') {
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.11), toonMat(new THREE.Color(0x7fd4e8)));
+      gem.position.set(0, headR * 1.35, 0);
+      headGroup.add(gem);
+    } else if (L.accessory === 'flower') {
+      for (let p = 0; p < 5; p++) {
+        const petal = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), toonMat(new THREE.Color(0xe87a9a)));
+        const a = (p / 5) * Math.PI * 2;
+        petal.position.set(Math.cos(a) * 0.08, headR * 1.3, Math.sin(a) * 0.08);
+        headGroup.add(petal);
+      }
+      const core = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), toonMat(new THREE.Color(0xf4d03c)));
+      core.position.set(0, headR * 1.3, 0);
+      headGroup.add(core);
+    } else if (L.accessory === 'leaf') {
+      const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), toonMat(new THREE.Color(0x5a9830)));
+      leaf.scale.set(0.3, 0.75, 1);
+      leaf.rotation.z = 0.5;
+      leaf.position.set(0.07, headR * 1.4, 0);
+      headGroup.add(leaf);
+    } else if (L.accessory === 'horn') {
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.3, 8), M.type);
+      horn.position.set(0, headR * 1.45, 0);
+      headGroup.add(horn);
+    }
     root.add(headGroup);
     parts.head = headGroup;
+
+    // 尾羽（avian 此前不渲染 look.tail——吞来尾巴无效果）
+    parts.tail = makeTail(M, L, 0, 0.35, -0.62, 1.5);
+    root.add(parts.tail);
 
     // 大翅膀（有扇动动画）
     for (const s of [-1, 1]) {
@@ -657,6 +804,27 @@ export function buildPet3D(pet) {
       );
       root.add(seg);
     }
+    // 斑点（serpent 的 spots 差异：背上高亮圆点，正侧可见）
+    if (L.pattern === 'spots') {
+      for (let i = 0; i < 4; i++) {
+        const t = 0.15 + i * 0.22;
+        const spot = new THREE.Mesh(new THREE.SphereGeometry(0.09 - i * 0.012, 10, 8), M.belly);
+        spot.scale.z = 0.4;
+        spot.position.set(Math.sin(t * Math.PI * 1.6) * 0.22, -0.42 + t * 0.45, -t * 0.55 + 0.18);
+        root.add(spot);
+      }
+    }
+    // 条纹（stripe：亮色环带加强版）
+    if (L.pattern === 'stripe') {
+      for (let i = 0; i < segs; i += 1) {
+        const t = i / (segs - 1);
+        const band = new THREE.Mesh(new THREE.TorusGeometry(0.3 * (1 - t * 0.55) + 0.02, 0.05, 6, 18), M.type);
+        band.rotation.x = Math.PI / 2;
+        band.rotation.y = Math.sin(t * Math.PI * 1.6) * 0.35;
+        band.position.set(Math.sin(t * Math.PI * 1.6) * 0.22, -0.5 + t * 0.45, -t * 0.55);
+        root.add(band);
+      }
+    }
     // 肚皮纹
     if (L.pattern !== 'none') {
       for (let i = 0; i < segs - 1; i += 2) {
@@ -715,7 +883,8 @@ export function buildPet3D(pet) {
     root.add(headGroup);
     parts.head = headGroup;
 
-    parts.tail = makeTail(M, L, Math.sin(Math.PI * 1.6) * 0.22 * -1, -0.55, -1.1, 0.7);
+    // 尾巴：抬到尾梢上方并放大（此前被蛇身遮住看不见，吞噬尾巴无效果）
+    parts.tail = makeTail(M, L, 0.5, 0.45, 0.15, 1.3);
     root.add(parts.tail);
 
     group.add(root);
@@ -739,6 +908,8 @@ export function buildPet3D(pet) {
     dorsal.scale.set(0.4, 1, 1);
     dorsal.position.set(0, 0.62, 0);
     root.add(dorsal);
+    // 花纹（aquatic 此前无 spots/stripe 渲染）
+    root.add(makeBodyPattern(M, L, 0.48, { y0: -0.05 }));
 
     // 头（与身体融合的前段）
     const headGroup = new THREE.Group();
@@ -757,7 +928,7 @@ export function buildPet3D(pet) {
     root.add(headGroup);
     parts.head = headGroup;
 
-    // 鱼尾（两片三角）
+    // 鱼尾（两片三角）+ 吞噬尾巴款式差异（在鱼尾上叠加特征鳍/绒/电光，保证可见）
     const tailFin = new THREE.Group();
     for (const s of [-1, 1]) {
       const fin = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.5, 4), M.type);
@@ -766,6 +937,29 @@ export function buildPet3D(pet) {
       fin.rotation.x = s * 0.5;
       fin.rotation.z = Math.PI / 2;
       tailFin.add(fin);
+    }
+    // 款式差异（吞来 stub/curl/fluff/spark 时鱼尾变形）
+    if (L.tail === 'fluff') {
+      for (let i = 0; i < 5; i++) {
+        const p = new THREE.Mesh(new THREE.SphereGeometry(0.07 + (i % 2) * 0.03, 8, 6), M.accent);
+        p.position.set(-0.15 - (i % 3) * 0.12, (i - 2) * 0.09, -0.82);
+        tailFin.add(p);
+      }
+    } else if (L.tail === 'spark') {
+      for (let i = 0; i < 3; i++) {
+        const z = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.3, 4), M.white);
+        z.position.set(-0.1 - i * 0.1, (i % 2 ? 0.14 : -0.14), -0.85);
+        z.rotation.z = Math.PI / 2 + (i % 2 ? 0.4 : -0.4);
+        tailFin.add(z);
+      }
+    } else if (L.tail === 'curl') {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.045, 8, 16), M.accent);
+      ring.position.set(-0.16, 0, -0.85);
+      tailFin.add(ring);
+    } else if (L.tail === 'stub') {
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), M.accent);
+      knob.position.set(-0.12, 0, -0.85);
+      tailFin.add(knob);
     }
     tailFin.position.set(-0.75, 0, 0);
     parts.tail = tailFin;
@@ -839,7 +1033,7 @@ export function buildPet3D(pet) {
     belly.position.set(0, -0.22, 0.42);
     root.add(belly);
     // 花纹（mochi 此前无 spots/stripe 渲染）
-    root.add(makeBodyPattern(M, L, 0.5, { y0: 0.12 }));
+    root.add(makeBodyPattern(M, L, 0.52, { y0: 0.22 }));
 
     // 脸直接长在身上（无独立头）
     const faceY = 0.18;
@@ -860,6 +1054,34 @@ export function buildPet3D(pet) {
     root.add(ahoge);
     parts.head = ahoge;
 
+    // 耳朵（mochi 此前不渲染——吞来耳朵无效果；团子脸两侧挂小耳）
+    if (L.ears !== 'none') {
+      for (const s of [-1, 1]) {
+        let ear;
+        if (L.ears === 'pointy') {
+          ear = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.3, 8), M.body);
+          ear.position.set(0.5 * s, 0.42, 0);
+          ear.rotation.z = -0.6 * s;
+        } else if (L.ears === 'long') {
+          ear = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.4, 4, 10), M.body);
+          ear.position.set(0.42 * s, 0.6, 0);
+          ear.rotation.z = -0.35 * s;
+        } else if (L.ears === 'fin') {
+          ear = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), M.type);
+          ear.scale.set(0.3, 1, 0.8);
+          ear.position.set(0.55 * s, 0.35, 0);
+          ear.rotation.z = 0.5 * s;
+        } else { // round
+          ear = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 10), M.body);
+          ear.position.set(0.5 * s, 0.4, 0);
+        }
+        root.add(ear);
+      }
+    }
+    // 尾巴（mochi 此前不渲染——身后小尾巴，放大上移保证可见）
+    parts.tail = makeTail(M, L, 0, 0.15, -0.78, 1.5);
+    root.add(parts.tail);
+
     // 短手（贴身）
     for (const s of [-1, 1]) {
       const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.14, 4, 10), M.body);
@@ -875,17 +1097,32 @@ export function buildPet3D(pet) {
       root.add(foot);
     }
 
-    // 叶子头饰概率
-    if (L.accessory === 'leaf' || rng() < 0.3) {
+    // 顶部配饰（全款式：gem/flower/leaf/horn 此前只有 leaf——吞噬其他配饰无效果）
+    if (L.accessory === 'gem') {
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.14), toonMat(new THREE.Color(0x7fd4e8)));
+      gem.position.set(0, 0.78, 0.05);
+      root.add(gem);
+    } else if (L.accessory === 'flower') {
+      for (let p = 0; p < 5; p++) {
+        const petal = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 8), toonMat(new THREE.Color(0xe87a9a)));
+        const a = (p / 5) * Math.PI * 2;
+        petal.position.set(Math.cos(a) * 0.09, 0.76, Math.sin(a) * 0.09 + 0.04);
+        root.add(petal);
+      }
+      const core = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), toonMat(new THREE.Color(0xf4d03c)));
+      core.position.set(0, 0.76, 0.04);
+      root.add(core);
+    } else if (L.accessory === 'leaf' || (L.accessory === 'none' && rng() < 0.3)) {
       const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), toonMat(new THREE.Color(0x5a9830)));
       leaf.scale.set(0.3, 0.8, 1);
       leaf.rotation.z = 0.55;
       leaf.position.set(0.08, 0.78, 0);
       root.add(leaf);
+    } else if (L.accessory === 'horn') {
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.34, 8), M.type);
+      horn.position.set(0, 0.86, 0);
+      root.add(horn);
     }
-
-    parts.tail = makeTail(M, L, 0, -0.3, -0.6, 0.8);
-    root.add(parts.tail);
 
     group.add(root);
   }

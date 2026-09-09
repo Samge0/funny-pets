@@ -48,6 +48,7 @@ export const offer = reactive({
   petUid: null,
   petName: '',
   seed: 1,           // 预览 SVG 渲染用（花纹等 seed 维度）
+  petTypes: ['一般'], // 预览渲染用属性色（与实际精灵一致）
   defeatedName: '',
   moves: [],         // 候选技能 [{name,power,type,effect}]
   parts: [],         // 候选部件 [{part, theirs}]

@@ -332,6 +332,7 @@ async function winBattle() {
         petUid: mine.uid,
         petName: mine.name,
         seed: mine.seed,
+        petTypes: mine.types,
         defeatedName: state.wild.name,
         moves: moveOffers,
         parts: partOffers,
