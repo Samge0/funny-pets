@@ -82,7 +82,7 @@
 <script setup>
 import { reactive, watch, computed } from 'vue';
 import { offer, resolveOffer } from '../store.js';
-import { PART_LABELS } from '../core/evolve.js';
+import { PART_LABELS, LOOK_TO_SKELETON } from '../core/evolve.js';
 import { TYPE_COLORS } from '../data/types.js';
 import { petSvg } from '../core/sprites.js';
 import Pet3D from './Pet3D.vue';
@@ -120,11 +120,12 @@ function valueLabel(part, v) {
   if (part === 'body') return VALUE_LABELS[v + '_body'] ?? v;
   return VALUE_LABELS[v] ?? v;
 }
-// 部件入手模式：空槽=长出（新增）/ body=体型替换 / 已有=可叠加或替换（用户选）
-const canChooseHow = pp => pp.part !== 'body' && !isEmptySlot(pp);
+// 部件入手模式：空槽=长出（新增）/ body=体型替换 / pattern|eyes=单值部件强制换上 / 其余=可叠加或替换（用户选）
+const canChooseHow = pp => pp.part !== 'body' && pp.part !== 'pattern' && pp.part !== 'eyes' && !isEmptySlot(pp);
 function partMode(pp, pi) {
   if (pp.part === 'body') return '体型替换';
   if (isEmptySlot(pp)) return '🌱 长出';
+  if (pp.part === 'pattern' || pp.part === 'eyes') return '🔄 换上';
   return partHow[pi] === 'replace' ? '🔄 替换' : '➕ 叠加';
 }
 
@@ -135,7 +136,7 @@ function previewSvg(part, value) {
 }
 
 // ---- 实时合体预览：出战宠本体 + 勾选部件（叠加/替换由 partHow 决定，与 applyDevour 一致） ----
-const BODY_MAP = { round: 'mochi', pear: 'bipedal', tall: 'bipedal', blob: 'quadruped', drop: 'serpent' };
+const BODY_MAP = LOOK_TO_SKELETON; // 引擎单一事实源（此前两处各抄一份，易漂移）
 const previewPet = computed(() => {
   const look = { ...offer.currentLook };
   const extraParts = [...(offer.currentExtraParts ?? [])];
@@ -149,19 +150,24 @@ const previewPet = computed(() => {
       bodySwallowed = true;
     } else if (isEmpty) {
       look[pp.part] = pp.theirs;           // 长出
-    } else if (partHow[pi] === 'replace') {
-      look[pp.part] = pp.theirs;           // 替换：原部件换新，同维度叠件清掉
+    } else if (partHow[pi] === 'replace' || pp.part === 'pattern' || pp.part === 'eyes') {
+      // 替换或单值部件（pattern/eyes 叠加无视觉意义，引擎强制替换，预览同步）
+      look[pp.part] = pp.theirs;
       for (let i = extraParts.length - 1; i >= 0; i--) if (extraParts[i].part === pp.part) extraParts.splice(i, 1);
     } else {
       extraParts.push({ part: pp.part, value: pp.theirs }); // 叠加
     }
   });
+  // 引擎行为对齐：叠加上限 8 件 + 同款去重
+  const seen = new Map();
+  for (const e of extraParts.slice(-8)) seen.set(`${e.part}:${e.value}`, e);
+  const extraFinal = [...seen.values()];
   const pet = {
     seed: offer.seed ?? 1,
     name: offer.petName || '预览',
     types: offer.petTypes ?? ['一般'],
     look,
-    extraParts,
+    extraParts: extraFinal,
     level: 5,
     phase: offer.petPhase ?? 0,
   };

@@ -113,17 +113,24 @@ export function applyDevour(pet, movePicks, partPicks) {
     } else if (pick.part === 'body') {
       // body 骨架互斥：只能替换
       pet.look = { ...pet.look, body: pick.theirs };
-      const BODY_MAP = { round: 'mochi', pear: 'bipedal', tall: 'bipedal', blob: 'quadruped', drop: 'serpent' };
-      pet.bodyType = BODY_MAP[pick.theirs] ?? pet.bodyType;
+      const mapped = LOOK_TO_SKELETON[pick.theirs];
+      if (mapped) pet.bodyType = mapped;
       desc.push(`体型变化：${old} → ${pick.theirs}`);
     } else if (mode === 'replace') {
       // 用户选择替换：原部件换成新的（原叠件中同维度的一并清除，保持干净）
       pet.look = { ...pet.look, [pick.part]: pick.theirs };
       pet.extraParts = (pet.extraParts ?? []).filter(e => e.part !== pick.part);
       desc.push(`替换了${PART_LABELS[pick.part] ?? pick.part}：${old} → ${pick.theirs}`);
+    } else if (pick.part === 'pattern' || pick.part === 'eyes') {
+      // 花纹/眼睛是"单值语义"部件：叠加没有视觉意义（表面纹理不叠加），强制替换
+      // （此前选叠加会静默存进 extraParts 但渲染端跳过 = 吞了白吞）
+      pet.look = { ...pet.look, [pick.part]: pick.theirs };
+      pet.extraParts = (pet.extraParts ?? []).filter(e => e.part !== pick.part);
+      desc.push(`换上了${PART_LABELS[pick.part] ?? pick.part}：${old} → ${pick.theirs}（单值部件）`);
     } else {
       // 叠加（默认/auto）：原部件保留，作为叠件挂旁边（上限 8 件）
       pet.extraParts = [...(pet.extraParts ?? []), { part: pick.part, value: pick.theirs }].slice(-8);
+      dedupeExtraParts(pet);
       desc.push(`叠加了${PART_LABELS[pick.part] ?? pick.part}（${pick.theirs}）`);
     }
   }
@@ -135,6 +142,19 @@ export const PART_LABELS = {
   ears: '耳朵', tail: '尾巴', accessory: '饰品',
   pattern: '花纹', eyes: '眼睛', body: '体型',
 };
+
+// look.body（外形）→ 骨架映射：body 吞噬与进化共用（改体型必须同步骨架，否则 3D 渲染不认）
+export const LOOK_TO_SKELETON = {
+  round: 'mochi', pear: 'bipedal', tall: 'bipedal', blob: 'quadruped', drop: 'serpent',
+};
+
+// 叠件去重：同一部件维度同一值只留最新一件（多场战斗重复吞同款不再浪费槽位）
+function dedupeExtraParts(pet) {
+  if (!Array.isArray(pet.extraParts)) return;
+  const seen = new Map();
+  for (const e of pet.extraParts) seen.set(`${e.part}:${e.value}`, e); // 同 part+value 后者覆盖前者
+  pet.extraParts = [...seen.values()];
+}
 
 
 export function evolvePet(pet, phase) {
@@ -160,12 +180,17 @@ export function evolvePet(pet, phase) {
     if (!moves.find(m => m.name === stronger.name)) moves[moves.length - 1] = { ...stronger };
   }
 
+  // 进化体型跃迁：tall/pear/drop 三选一（并同步骨架映射，3D 渲染才会真正换体型）
+  const newBody = pick(rng, ['tall', 'pear', 'drop']);
+
   return {
     ...pet,
     name, base, phase,
     moves,
     lore: phase === 1 ? `进化后的${pet.name}。` + pet.lore : pet.lore,
-    look: { ...pet.look, body: pick(rng, ['tall', 'pear', 'drop']) },
+    look: { ...pet.look, body: newBody },
+    // 进化换体型必须同步骨架，否则 3D 渲染仍用旧 bodyType（体型变化视觉无效）
+    ...(LOOK_TO_SKELETON[newBody] ? { bodyType: LOOK_TO_SKELETON[newBody] } : {}),
   };
 }
 
