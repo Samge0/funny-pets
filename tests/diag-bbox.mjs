@@ -1,4 +1,4 @@
-// 终极诊断：Node 直接跑 buildPet3D 数 children
+// 读叠耳的世界坐标 bbox——确认是否在画面内
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync, existsSync, statSync } from 'node:fs';
@@ -16,21 +16,24 @@ const server = createServer((req, res) => {
     res.end(readFileSync(file));
   } else { res.writeHead(404); res.end('not found'); }
 });
-await new Promise(r => server.listen(4214, r));
+await new Promise(r => server.listen(4226, r));
 const browser = await chromium.launch({});
 const page = await browser.newPage();
-await page.goto('http://127.0.0.1:4214/funny-pets/app/', { waitUntil: 'networkidle' });
-const snapUrl = await page.evaluate(async () => {
-  const main = performance.getEntriesByType('resource').map(r => r.name).find(n => /app-.*\.js/.test(n));
-  const src = await (await fetch(main)).text();
-  const m = src.match(/snapshot-([A-Za-z0-9_-]+)\.js/);
-  const base = new URL(main).pathname.replace(/\/[^/]*$/, '');
-  return base + '/snapshot-' + m[1] + '.js';
+await page.goto('http://127.0.0.1:4226/funny-pets/app/', { waitUntil: 'networkidle' });
+const r = await page.evaluate(async () => {
+  const appUrl = performance.getEntriesByType('resource').map(r => r.name).find(n => /app-.*\.js/.test(n));
+  const appSrc = await (await fetch(appUrl)).text();
+  const m = appSrc.match(/snapshot-([A-Za-z0-9_-]+)\.js/);
+  const base = new URL(appUrl).pathname.replace(/\/[^/]*$/, '');
+  const snap = await import(base + '/snapshot-' + m[1] + '.js');
+  const app = await import(appUrl);
+  const build = app.b;
+
+  // 手动复刻 renderSnapshotOutlined 但保留场景引用
+  const THREE = (await import(base + '/snapshot-' + m[1] + '.js')).default ?? null;
+  // 直接用 window.THREE？不行——从 three chunk import
+  const threeUrl = appSrc.match(/from"(\.\/three-[^"]+)"\)/)?.[1] ?? null;
+  return { snapKeys: Object.keys(snap), threeUrl };
 });
-const r = await page.evaluate(async (url) => {
-  const mod = await import(url);
-  const names = Object.keys(mod);
-  return { names, snap: url };
-}, snapUrl);
 console.log(JSON.stringify(r));
 await browser.close(); server.close();

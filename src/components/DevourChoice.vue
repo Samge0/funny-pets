@@ -25,13 +25,24 @@
                 <label class="devour-take">
                   <input type="checkbox" v-model="takePart[pi]" />
                   <span class="part-name">{{ partLabel(pp.part) }}</span>
-                  <span class="part-mode-tag">{{ partMode(pp) }}</span>
+                  <span class="part-mode-tag">{{ partMode(pp, pi) }}</span>
                   <span class="part-preview">
                     <img class="preview-img" :src="previewSvg(pp.part, offer.currentLook[pp.part])" alt="吞前" width="48" height="48" />
                     <span class="preview-arrow">→</span>
                     <img class="preview-img after" :src="previewSvg(pp.part, pp.theirs)" alt="吞后" width="48" height="48" />
                   </span>
                 </label>
+                <!-- 入手方式（已有部件时可选叠加/替换；空槽自动长出；body 固定替换） -->
+                <div class="devour-how part-how" v-if="takePart[pi] && canChooseHow(pp)">
+                  <label class="how-opt">
+                    <input type="radio" :name="'pthow-' + pi" value="stack" v-model="partHow[pi]" />
+                    ➕ 叠加（保留原{{ partLabel(pp.part)}}，多长一件）
+                  </label>
+                  <label class="how-opt">
+                    <input type="radio" :name="'pthow-' + pi" value="replace" v-model="partHow[pi]" />
+                    🔄 替换（原{{ partLabel(pp.part) }}换成它）
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -78,13 +89,20 @@ import Pet3D from './Pet3D.vue';
 
 const takeMove = reactive([]);
 const takePart = reactive([]);
+const partHow = reactive([]); // 每个部件候选的入手方式：'stack' | 'replace'（空槽/body 无此项）
 const moveHow = reactive([]);
 
 watch(() => offer.token, () => {
   takeMove.splice(0, takeMove.length, ...offer.moves.map(() => true));
   takePart.splice(0, takePart.length, ...offer.parts.map(() => true));
   moveHow.splice(0, moveHow.length, ...offer.moves.map(() => 'new'));
+  partHow.splice(0, partHow.length, ...offer.parts.map(pp => (pp.part === 'body' || isEmptySlot(pp)) ? 'auto' : 'stack'));
 }, { immediate: true });
+
+const isEmptySlot = pp => {
+  const cur = offer.currentLook[pp.part];
+  return cur == null || cur === 'none' || cur === '';
+};
 
 const partLabel = p => PART_LABELS[p] ?? p;
 const typeColor = t => TYPE_COLORS[t] ?? '#9fa19f';
@@ -102,12 +120,12 @@ function valueLabel(part, v) {
   if (part === 'body') return VALUE_LABELS[v + '_body'] ?? v;
   return VALUE_LABELS[v] ?? v;
 }
-// 部件入手模式：空槽=长出（新增）/ 已有=叠加挂件 / body=体型替换
-function partMode(pp) {
-  const cur = offer.currentLook[pp.part];
+// 部件入手模式：空槽=长出（新增）/ body=体型替换 / 已有=可叠加或替换（用户选）
+const canChooseHow = pp => pp.part !== 'body' && !isEmptySlot(pp);
+function partMode(pp, pi) {
   if (pp.part === 'body') return '体型替换';
-  if (cur == null || cur === 'none' || cur === '') return '🌱 长出';
-  return '➕ 叠加';
+  if (isEmptySlot(pp)) return '🌱 长出';
+  return partHow[pi] === 'replace' ? '🔄 替换' : '➕ 叠加';
 }
 
 function previewSvg(part, value) {
@@ -116,7 +134,7 @@ function previewSvg(part, value) {
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(petSvg(pet, 48));
 }
 
-// ---- 实时合体预览：出战宠本体 + 勾选部件（按 applyDevour 同款逻辑：空槽长出/已有叠加/body 替换） ----
+// ---- 实时合体预览：出战宠本体 + 勾选部件（叠加/替换由 partHow 决定，与 applyDevour 一致） ----
 const BODY_MAP = { round: 'mochi', pear: 'bipedal', tall: 'bipedal', blob: 'quadruped', drop: 'serpent' };
 const previewPet = computed(() => {
   const look = { ...offer.currentLook };
@@ -131,6 +149,9 @@ const previewPet = computed(() => {
       bodySwallowed = true;
     } else if (isEmpty) {
       look[pp.part] = pp.theirs;           // 长出
+    } else if (partHow[pi] === 'replace') {
+      look[pp.part] = pp.theirs;           // 替换：原部件换新，同维度叠件清掉
+      for (let i = extraParts.length - 1; i >= 0; i--) if (extraParts[i].part === pp.part) extraParts.splice(i, 1);
     } else {
       extraParts.push({ part: pp.part, value: pp.theirs }); // 叠加
     }
@@ -152,7 +173,7 @@ const previewPet = computed(() => {
 });
 const previewTag = computed(() => JSON.stringify(previewPet.value.look) + '|' + JSON.stringify(previewPet.value.extraParts ?? []));
 const changedParts = computed(() =>
-  offer.parts.filter((pp, pi) => takePart[pi]).map(pp => `${partLabel(pp.part)}${partMode(pp) === '➕ 叠加' ? '叠加' : '→'}${valueLabel(pp.part, pp.theirs)}`)
+  offer.parts.filter((pp, pi) => takePart[pi]).map(pp => `${partLabel(pp.part)}${partMode(pp, offer.parts.indexOf(pp)) === '➕ 叠加' ? '叠加' : partMode(pp, offer.parts.indexOf(pp)) === '🔄 替换' ? '换上' : '→'}${valueLabel(pp.part, pp.theirs)}`)
 );
 
 // 测试探针：暴露预览宠数据（E2E 验证骨架不漂移用；生产无副作用）
@@ -169,7 +190,8 @@ function confirmAll() {
   });
   const partPicks = [];
   offer.parts.forEach((pp, pi) => {
-    if (takePart[pi]) partPicks.push(pp);
+    if (!takePart[pi]) return;
+    partPicks.push({ ...pp, mode: partHow[pi] ?? 'auto' });
   });
   resolveOffer(movePicks, partPicks);
 }
@@ -226,6 +248,7 @@ function confirmAll() {
 .preview-img.after { border-color: rgba(232,134,44,0.55); background: #fdf4ec; }
 .preview-arrow { color: #b3541e; font-weight: 800; font-size: 13px; }
 .devour-how { margin-top: 6px; padding-left: 24px; display: flex; flex-direction: column; gap: 3px; }
+.part-how .how-opt { color: #2e5d4b; }
 .how-opt { font-size: 12px; color: #4a5262; display: flex; align-items: center; gap: 5px; cursor: pointer; }
 .devour-actions { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
 .devour-actions .primary { background: linear-gradient(120deg, #e8862c, #d85a20); color: #fff; border: none; border-radius: 24px; padding: 10px 30px; font-weight: 700; }

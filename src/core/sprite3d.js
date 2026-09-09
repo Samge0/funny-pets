@@ -371,26 +371,40 @@ export function buildPet3D(pet) {
   else if (bodyType === 'aquatic') buildAquatic();
   else buildMochi();
 
-  // ---- 共通：吞噬叠加件（extraParts：同维度多件挂件，错开位置渲染）----
+  // ---- 共通：吞噬叠加件（extraParts：同维度多件挂件，贴身小错位——紧挨原生部件，不悬浮）----
   const extras = Array.isArray(pet.extraParts) ? pet.extraParts : [];
   if (extras.length) {
-    const EX_OFFSET = { ears: 0, tail: 1, accessory: 2, pattern: 0, eyes: 0 };
     extras.forEach((ex, i) => {
-      const layer = i * 0.22; // 逐件错位（高度/侧移），避免完全重叠
+      const layer = i * 0.07; // 极小逐件错位（≈5% 体宽），视觉上"长在一起"
       if (ex.part === 'ears') {
-        const e = makeEars({ ...M }, { ...L, ears: ex.value }, 0.55, -1 - layer * 0.3);
-        const e2 = makeEars({ ...M }, { ...L, ears: ex.value }, 0.55, 1 + layer * 0.3);
-        e.position.set(-0.15 - layer * 0.12, 1.15 + layer * 0.1, 0);
-        e2.position.set(0.15 + layer * 0.12, 1.15 + layer * 0.1, 0);
+        // 叠耳：组位置=期望世界位置 − 组内 mesh 局部偏移（long 耳局部 y≈headR*1.1≈0.6，需扣除）
+        const e = makeEars({ ...M }, { ...L, ears: ex.value }, 0.55, -1);
+        const e2 = makeEars({ ...M }, { ...L, ears: ex.value }, 0.55, 1);
+        const innerY = 0.55 * 1.1; // makeEars long 款内部 ear.position.y ≈ headR*1.1
+        const sideShift = 0.5 + layer * 0.9;
+        e.position.set(-sideShift, 1.32 - innerY, -0.05);
+        e2.position.set(sideShift, 1.32 - innerY, -0.05);
+        e.rotation.y = -0.35;
+        e2.rotation.y = 0.35;
+        e.scale.setScalar(0.85);
+        e2.scale.setScalar(0.85);
         group.add(e, e2);
+        if (typeof window !== 'undefined' && window.__earDebug) {
+          window.__earDebug.push({ pos: e.position.toArray(), innerY, worldY: 1.32, scale: e.scale.toArray() });
+        }
       } else if (ex.part === 'tail') {
-        const t = makeTail(M, { ...L, tail: ex.value }, 0.95 + layer * 0.2, 0.55 + EX_OFFSET.tail * 0.1 + layer * 0.25, -0.55, 1.1 + layer * 0.15);
+        // 紧贴原生尾巴根部旁（同挂点微错位，尺寸略小——像多长出来的一撮）
+        const t = makeTail(M, { ...L, tail: ex.value }, 0.16 + layer * 2, 0.35 + layer, -0.5 - layer, 0.85);
         group.add(t);
       } else if (ex.part === 'accessory') {
+        // 挂在头侧发际线（原生配饰在头顶/额前，叠件在侧上——同区域不漂移）
         const acc = { ...L, accessory: ex.value };
         const holder = new THREE.Group();
-        holder.position.set(-0.35 - layer * 0.28, 1.3 + layer * 0.16, 0.25);
-        holder.add(makeAccessoryOnly(M, acc, 0.16));
+        const side = i % 2 === 0 ? -1 : 1; // 多件左右交替
+        holder.position.set(side * (0.3 + layer * 2), 1.32 + layer, 0.08);
+        const only = makeAccessoryOnly(M, acc, 0.16);
+        only.scale.setScalar(0.78);
+        holder.add(only);
         group.add(holder);
       }
       // pattern/eyes 为表面纹理/器官——不参与叠加（同维度视觉互斥），跳过

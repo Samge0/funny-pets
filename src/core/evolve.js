@@ -105,21 +105,26 @@ export function applyDevour(pet, movePicks, partPicks) {
   for (const pick of partPicks) {
     const old = pet.look[pick.part];
     const isEmpty = old == null || old === 'none' || old === '';
+    const mode = pick.mode ?? 'auto'; // 'stack'=叠加 | 'replace'=替换 | 'auto'=按槽位自动
     if (isEmpty) {
       // 空槽位 → 直接长出（真正的"新增"）
       pet.look = { ...pet.look, [pick.part]: pick.theirs };
       desc.push(`长出了${PART_LABELS[pick.part] ?? pick.part}（${pick.theirs}）`);
+    } else if (pick.part === 'body') {
+      // body 骨架互斥：只能替换
+      pet.look = { ...pet.look, body: pick.theirs };
+      const BODY_MAP = { round: 'mochi', pear: 'bipedal', tall: 'bipedal', blob: 'quadruped', drop: 'serpent' };
+      pet.bodyType = BODY_MAP[pick.theirs] ?? pet.bodyType;
+      desc.push(`体型变化：${old} → ${pick.theirs}`);
+    } else if (mode === 'replace') {
+      // 用户选择替换：原部件换成新的（原叠件中同维度的一并清除，保持干净）
+      pet.look = { ...pet.look, [pick.part]: pick.theirs };
+      pet.extraParts = (pet.extraParts ?? []).filter(e => e.part !== pick.part);
+      desc.push(`替换了${PART_LABELS[pick.part] ?? pick.part}：${old} → ${pick.theirs}`);
     } else {
-      // 已有部件 → 叠加挂件（extraParts 数组，可叠多件；body 例外：骨架互斥只能替换）
-      if (pick.part === 'body') {
-        pet.look = { ...pet.look, body: pick.theirs };
-        const BODY_MAP = { round: 'mochi', pear: 'bipedal', tall: 'bipedal', blob: 'quadruped', drop: 'serpent' };
-        pet.bodyType = BODY_MAP[pick.theirs] ?? pet.bodyType;
-        desc.push(`体型变化：${old} → ${pick.theirs}`);
-      } else {
-        pet.extraParts = [...(pet.extraParts ?? []), { part: pick.part, value: pick.theirs }].slice(-8); // 上限 8 叠件
-        desc.push(`叠加了${PART_LABELS[pick.part] ?? pick.part}（${pick.theirs}）`);
-      }
+      // 叠加（默认/auto）：原部件保留，作为叠件挂旁边（上限 8 件）
+      pet.extraParts = [...(pet.extraParts ?? []), { part: pick.part, value: pick.theirs }].slice(-8);
+      desc.push(`叠加了${PART_LABELS[pick.part] ?? pick.part}（${pick.theirs}）`);
     }
   }
   return desc;
