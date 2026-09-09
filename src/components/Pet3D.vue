@@ -52,6 +52,11 @@ function startAct(now) {
 function applyAct(now) {
   const P = pet3d?.parts;
   if (!P) return;
+  // 头部基础朝向（骨架歪头/前倾）：动作增量叠加在它之上，结束复位回它——
+  // 直接写绝对值会把骨架设定的脑袋朝向抹掉（"落枕"观感根因）
+  const headBase = P.head?.userData?.baseRot;
+  const hx = () => (headBase?.x ?? 0);
+  const hy = () => (headBase?.y ?? 0);
   if (now >= blinkAt && !blinking) { blinking = true; blinkAt = now + 180; }
   // 眨眼（独立节律，2.2~5s 一次；sleepy 眯眯眼不眨）
   if (P.eyes && P.eyes.userData.blink) {
@@ -63,8 +68,8 @@ function applyAct(now) {
   if (!act) return;
   const p = (now - act.start) / act.dur;
   if (p >= 1) {
-    // 动作结束复位（保留基础 update 的摆动幅度内）
-    if (P.head) { P.head.rotation.x = 0; P.head.rotation.y = 0; }
+    // 动作结束复位（头部回到骨架基础朝向，其余关节归零）
+    if (P.head) { P.head.rotation.x = hx(); P.head.rotation.y = hy(); }
     if (P.tail) P.tail.rotation.z = 0;
     if (P.bodyRoot) P.bodyRoot.rotation.z = 0;
     P.legs?.forEach(l => { l.rotation.x = 0; });
@@ -74,13 +79,13 @@ function applyAct(now) {
   const s = Math.sin(p * Math.PI); // 0→1→0 包络
   switch (act.kind) {
     case 'blinkWave': // 眨眼+点头卖萌
-      if (P.head) P.head.rotation.x = s * 0.28;
+      if (P.head) P.head.rotation.x = hx() + s * 0.28;
       break;
     case 'headShake': // 摇头（左右）
-      if (P.head) P.head.rotation.y = Math.sin(p * Math.PI * 4) * 0.5;
+      if (P.head) P.head.rotation.y = hy() + Math.sin(p * Math.PI * 4) * 0.5;
       break;
     case 'lookAround': // 环顾
-      if (P.head) P.head.rotation.y = Math.sin(p * Math.PI * 2) * 0.6;
+      if (P.head) P.head.rotation.y = hy() + Math.sin(p * Math.PI * 2) * 0.6;
       break;
     case 'tailWag': // 快速摇尾（叠加在基础摆动上）
       if (P.tail) P.tail.rotation.z = Math.sin(p * Math.PI * 10) * 0.3;

@@ -37,20 +37,34 @@ async function chatRequest(cfg, messages, { temperature = 1.1, maxTokens = 400, 
 }
 
 // ---- 精灵生成 ----
+// 生成是结构化任务（要求严格 JSON）：低温显著降低产出非法 JSON 的概率
+// （此前 temperature=1.1 默认值偏高，偶尔输出带围栏/斜杠转义坏 JSON → 整次降级随机）
 export async function generatePetWithLlm(cfg, signal) {
   const res = await chatRequest(cfg, [
     { role: 'system', content: '你只输出严格的 JSON，不输出 markdown 代码块或其他文字。' },
     { role: 'user', content: PROMPT },
-  ], { signal });
+  ], { temperature: 0.8, maxTokens: 400, signal });
   const data = await res.json();
   const text = data.choices?.[0]?.message?.content ?? '';
   return parseLlmPet(text);
 }
 
 export function parseLlmPet(text) {
-  const match = text.match(/\{[\s\S]*\}/);
+  // 容错：剥 markdown 代码围栏（```json ... ```）与首尾杂文字，再取最外层大括号
+  const stripped = String(text ?? '').replace(/```(?:json)?/gi, '').trim();
+  const match = stripped.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('LLM 返回中没有 JSON');
-  const raw = JSON.parse(match[0]);
+  let raw;
+  try {
+    raw = JSON.parse(match[0]);
+  } catch (e1) {
+    // 再容错一次：模型偶尔在字符串值里输出尾随逗号/未转义引号——试宽松修复
+    try {
+      raw = JSON.parse(match[0].replace(/,\s*([}\]])/g, '$1'));
+    } catch {
+      throw e1;
+    }
+  }
 
   const name = String(raw.name ?? '').trim().slice(0, 6);
   if (!name) throw new Error('LLM 返回缺少名字');

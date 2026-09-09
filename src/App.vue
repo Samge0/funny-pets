@@ -18,8 +18,9 @@ import Celebration from './components/Celebration.vue';
 import PetDetail from './components/PetDetail.vue';
 import DevourChoice from './components/DevourChoice.vue';
 import GlobalToast from './components/GlobalToast.vue';
+import { readSharedFromHash, shareUrl } from './core/sharePet.js';
 
-const view = ref('map'); // map | encounter | battle | dex | settings
+const view = ref('map'); // map | encounter | battle | dex | settings | shared
 const spawning = ref(false);
 const wild = ref(null);
 const battle = ref(null);
@@ -36,6 +37,63 @@ const lastExpGain = ref(0);
 const detailPet = ref(null);
 const ballsLeft = ref(5);        // 每只野生精灵限 5 次直接丢球
 const BALLS_MAX = 5;
+
+// ---- 分享观赏模式（#p=...）：只读 3D 展示 + 可挑战；禁聊天 ----
+const sharedPet = ref(null);   // 分享来的宠物（解码后）
+const sharedViewed = ref(false); // 已看过提示（避免重复 toast）
+(function initShared() {
+  const shared = readSharedFromHash();
+  if (typeof window !== 'undefined') window.__initSharedDebug = { hash: location.hash.slice(0, 40), got: !!shared };
+  if (shared) {
+    sharedPet.value = shared.pet;
+    view.value = 'shared';
+  }
+})();
+function copyShareLink(pet) {
+  const url = shareUrl(pet);
+  const done = () => showToast('分享链接已复制！发给朋友，TA 可以观赏或挑战这只精灵', 3200);
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(url).then(done).catch(() => fallbackCopy(url, done));
+  } else fallbackCopy(url, done);
+}
+function fallbackCopy(text, done) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); done(); } catch { showToast('复制失败，请手动复制地址栏链接', 2600); }
+  ta.remove();
+}
+// 挑战分享宠：查看者用自己的出战宠 vs 分享宠（复用战斗引擎；
+// 分享宠 as wild——挑战结果只影响查看者本地经验，不写分享者存档天然成立）
+function challengeShared() {
+  if (!sharedPet.value) return;
+  if (!party.value.length) {
+    showToast('你还没有精灵！先去捕捉一只再来挑战');
+    return;
+  }
+  const healthy = party.value.filter(p => p.hp > 0);
+  if (!healthy.length) {
+    for (const p of save.pets) p.hp = undefined;
+    showToast('队伍已休整完毕！');
+  }
+  const battleParty = party.value.map(p => {
+    const copy = withStats({ ...p });
+    copy.hp = copy.maxHp;
+    copy.boosts = {};
+    return copy;
+  });
+  const first = battleParty.find(p => p.uid === healthy[0]?.uid) ?? battleParty[0];
+  const foe = withStats({ ...sharedPet.value });
+  foe.hp = foe.maxHp;
+  battle.value = newBattleState(first, foe, battleParty);
+  battleLog.value = [];
+  showSwitchPanel.value = false;
+  battleFromChallenge.value = true; // 标记：胜利后不触发吞噬提案（分享宠不是野怪）
+  view.value = 'battle';
+}
+const battleFromChallenge = ref(false);
 
 const petSvgOf = (pet, size) => petSvg(pet, size);
 const typeChipStyle = (t) => ({ background: TYPE_COLORS[t] ?? '#9fa19f' });
@@ -83,11 +141,23 @@ async function encounter(mapId) {
   try {
     let overrides = null;
     if (llmConfig.enabled && isLlmConfigured(llmConfig)) {
+      // 超时 + 一次自动重试：慢/挂的接口不再长时间卡住"生成中"，瞬时抖动不直接降级随机
+      // （此前无超时会 fetch 悬挂；单次失败立刻降级 → 用户感觉"经常生成失败"）
+      const genWithTimeout = () => {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 12000);
+        return generatePetWithLlm(llmConfig, ctrl.signal).finally(() => clearTimeout(timer));
+      };
       try {
-        overrides = await generatePetWithLlm(llmConfig);
-      } catch (err) {
-        console.warn('LLM 生成失败，降级本地随机', err);
-        showToast('LLM 生成失败，本次使用本地随机');
+        overrides = await genWithTimeout();
+      } catch (err1) {
+        console.warn('LLM 生成首次失败，重试一次', err1);
+        try {
+          overrides = await genWithTimeout();
+        } catch (err2) {
+          console.warn('LLM 生成重试仍失败，降级本地随机', err2);
+          showToast('LLM 生成失败，本次使用本地随机');
+        }
       }
     }
     wild.value = spawnWild(mapId, overrides);
@@ -96,6 +166,12 @@ async function encounter(mapId) {
   } finally {
     spawning.value = false;
   }
+}
+
+function exitShared() {
+  sharedPet.value = null;
+  history.replaceState(null, '', location.pathname + location.search); // 清掉 #p= 防刷新再进
+  view.value = 'map';
 }
 
 function fleeWild() { wild.value = null; view.value = 'map'; }
@@ -305,7 +381,9 @@ async function act(action) {
       // 逃跑成功：正常退出战斗返回地图（此前无处理导致界面卡死）
       battle.value = null;
       wild.value = null;
-      view.value = 'map';
+      const backToShared = battleFromChallenge.value;
+      battleFromChallenge.value = false;
+      view.value = backToShared && sharedPet.value ? 'shared' : 'map';
       showToast('成功逃走了！');
     }
     // ended === 'switch'：等待玩家选择换宠（force-switch 面板显示）
@@ -351,11 +429,12 @@ async function winBattle() {
   // 吞噬：每场胜利都掷（升级=满档 60%/55%，未升级=常驻档 35%/30%）。
   // 之前只在升级时掷——高等级几十场升一级，吞噬体验极度匮乏。
   // 候选交给玩家在弹窗里自选（新增 or 替换谁）。
+  // 挑战赛（好友分享宠）不掷：那不是野怪，没有"战利品"语义
   let devourDesc = '';
   {
     const luck = r.levels > 0 ? 'levelup' : 'flat';
-    const moveOffers = offerDevourMoves(mine, state.wild.moves ?? [], luck);
-    const partOffers = offerDevourParts(mine, state.wild.look, luck);
+    const moveOffers = battleFromChallenge.value ? [] : offerDevourMoves(mine, state.wild.moves ?? [], luck);
+    const partOffers = battleFromChallenge.value ? [] : offerDevourParts(mine, state.wild.look, luck);
     if (moveOffers.length || partOffers.length) {
       // 先弹庆祝窗，关掉后再弹吞噬选择（顺序体验：先知道战果，再分配战利品）
       if (r.evolvedTo) {
@@ -418,7 +497,10 @@ async function winBattle() {
   }
   battle.value = null;
   wild.value = null;
-  view.value = 'map';
+  // 挑战赛胜利后回到分享观赏页（继续看/再战），普通胜利回地图
+  const backToShared = battleFromChallenge.value;
+  battleFromChallenge.value = false;
+  view.value = backToShared && sharedPet.value ? 'shared' : 'map';
 }
 
 function loseBattle() {
@@ -460,7 +542,10 @@ function loseBattle() {
   }
   battle.value = null;
   wild.value = null;
-  view.value = 'map';
+  // 挑战赛战败也回分享观赏页（可再战），普通战败回地图
+  const backToShared = battleFromChallenge.value;
+  battleFromChallenge.value = false;
+  view.value = backToShared && sharedPet.value ? 'shared' : 'map';
 }
 
 // 捕捉成功嗨点
@@ -596,7 +681,9 @@ function doReset() {
   location.reload();
 }
 
-onMounted(() => { view.value = 'map'; });
+// 挂载后回到地图（但分享观赏模式除外：#p= 链接进来要保持 shared 视图，
+// 此前无条件重置会把 initShared 设置的 view 覆盖回 map → 分享页永远进不去）
+onMounted(() => { if (!sharedPet.value) view.value = 'map'; });
 </script>
 
 <template>
@@ -638,6 +725,26 @@ onMounted(() => { view.value = 'map'; });
           </button>
         </div>
         <div v-if="spawning" class="spawn-mask"><div class="spinner"></div><p>草丛沙沙作响…</p></div>
+      </section>
+
+      <!-- ============ 分享观赏（#p= 链接）：只读 3D + 挑战 ============ -->
+      <section v-else-if="view === 'shared' && sharedPet" class="encounter-view shared-view">
+        <div class="wild-card">
+          <div class="wild-sprite3d">
+            <Pet3D :pet="sharedPet" :size="200" drag-mode="panY" />
+          </div>
+          <h2>{{ sharedPet.name }} <small class="lv">Lv.{{ sharedPet.level }}</small></h2>
+          <p class="shared-owner-hint">🐾 来自好友分享的精灵 · 点击它会跳一下</p>
+          <div class="chips">
+            <i v-for="t in sharedPet.types" :key="t" class="chip" :style="typeChipStyle(t)">{{ t }}</i>
+            <i class="chip rarity-chip" :style="{ background: rarityInfo(sharedPet.rarity).color }">{{ rarityInfo(sharedPet.rarity).name }}</i>
+          </div>
+          <p class="lore">{{ sharedPet.lore }}</p>
+          <div class="actions">
+            <button class="primary" @click="challengeShared">⚔️ 用我的精灵挑战</button>
+            <button class="ghost" @click="exitShared">返回游戏</button>
+          </div>
+        </div>
       </section>
 
       <!-- ============ 相遇 ============ -->

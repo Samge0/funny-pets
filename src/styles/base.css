@@ -237,10 +237,14 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .dex-info .stats { display: flex; gap: 8px; font-size: 11px; color: var(--text-dim); flex-wrap: wrap; }
 .dex-info .lore { font-size: 11px; margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .release {
-  position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; padding: 0;
-  border-radius: 50%; border: none; background: rgba(200, 90, 90, 0.12); color: var(--danger); font-size: 12px; line-height: 1;
+  /* 与右上排序按钮同列（排序组下方），不再被置顶按钮遮挡 */
+  position: absolute; top: 86px; right: 8px; width: 24px; height: 22px; padding: 0;
+  border-radius: 7px; border: 1px solid rgba(200, 90, 90, 0.25);
+  background: rgba(255,255,255,0.85); color: var(--danger); font-size: 12px; line-height: 1;
 }
+.release:hover { background: rgba(200, 90, 90, 0.15); }
 .empty { text-align: center; color: var(--text-dim); padding: 50px 0; }
+.shared-owner-hint { font-size: 12.5px; color: var(--text-dim); margin: 2px 0 8px; }
 
 /* ---- 设置 ---- */
 .settings-view { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }

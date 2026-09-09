@@ -5,6 +5,8 @@
     <div v-if="pet" class="detail-mask" @click.self="close">
       <div class="detail-card">
         <button class="detail-close" @click="close">✕</button>
+        <!-- 分享：生成 #p= 链接给好友观赏/挑战（查看者只读+可挑战，不能聊天） -->
+        <button class="detail-share" @click="share" title="生成分享链接">🔗 分享</button>
         <div class="detail-top">
           <div class="detail-sprite"><Pet3D :key="modelTag" :pet="pet" :size="140" /></div>
           <div class="detail-meta">
@@ -76,6 +78,7 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import { llmConfig, showToast, rarityInfo } from '../store.js';
 import { isLlmConfigured, chatWithSoul } from '../core/llm.js';
+import { shareUrl } from '../core/sharePet.js';
 import { chatOf, appendChat, maybeCompress, persistChat } from '../chat.js';
 import { statsAt } from '../core/evolve.js';
 import { ensureSoul, traitLabels, updateSoul, driftTraits, addProfileFact, touchRelation } from '../core/soul.js';
@@ -117,6 +120,21 @@ function ensure(p) {
 
 function chipStyle(t) { return { background: TYPE_COLORS[t] ?? '#9fa19f' }; }
 function close() { emit('close'); }
+
+// 分享：#p= 链接（纯前端，无后端）。查看者只读观赏 + 可挑战，聊天天然不可用
+function share() {
+  const url = shareUrl(props.pet);
+  const done = () => showToast('分享链接已复制！好友打开即可观赏或挑战', 3200);
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(url).then(done).catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch { showToast('复制失败，请手动复制地址栏', 2600); }
+      ta.remove();
+    });
+  } else showToast('复制失败，请手动复制地址栏', 2600);
+}
 function fmtTime(t) {
   const d = new Date(t);
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -201,6 +219,13 @@ function clearChat() {
   border-radius: 50%; border: none; background: rgba(120,130,160,0.14);
   font-size: 14px; cursor: pointer;
 }
+.detail-share {
+  position: absolute; top: 10px; right: 48px; height: 30px; padding: 0 12px;
+  border-radius: 15px; border: 1px solid rgba(91,127,212,0.45);
+  background: rgba(255,255,255,0.9); color: var(--primary-deep, #4664b0);
+  font-size: 12.5px; cursor: pointer; white-space: nowrap;
+}
+.detail-share:hover { background: var(--primary, #5b7fd4); color: #fff; }
 .detail-top { display: flex; gap: 16px; }
 .detail-sprite { flex-shrink: 0; }
 .detail-meta { flex: 1; min-width: 0; }

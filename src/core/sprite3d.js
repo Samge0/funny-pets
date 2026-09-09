@@ -46,7 +46,10 @@ const TYPE_ACCENT = {
 };
 
 export function paletteOf(pet) {
-  const pal = PALETTES[pet.look.palette % PALETTES.length];
+  // palette 兜底：分享链接数据缺 palette（截断/手改）时 PALETTES[NaN]=undefined
+  // → pal.body 读取抛错 → 整页白屏（errorHandler 替换 #app）
+  const idx = Number.isInteger(pet.look?.palette) ? pet.look.palette % PALETTES.length : 0;
+  const pal = PALETTES[idx] ?? PALETTES[0];
   return {
     body: new THREE.Color(pal.body),
     belly: new THREE.Color(pal.belly),
@@ -341,11 +344,12 @@ export function buildPet3D(pet) {
   const phase = pet.phase ?? 0;
   const L = {
     eyeSize: 0.85 + rng() * 0.55,
-    eyes: pet.look.eyes,
-    ears: pet.look.ears,
-    tail: pet.look.tail,
-    pattern: pet.look.pattern,
-    accessory: pet.look.accessory,
+    // 分享数据可能缺字段：一律兜底（缺 ears/tail 等于 'none'，缺 palette 已在 paletteOf 兜）
+    eyes: pet.look?.eyes ?? 'round',
+    ears: pet.look?.ears ?? 'none',
+    tail: pet.look?.tail ?? 'none',
+    pattern: pet.look?.pattern ?? 'none',
+    accessory: pet.look?.accessory ?? 'none',
     mouthType: ['smile', 'fang', 'beak'][Math.floor(rng() * 3)],
     // v4 骨架内体型随机：高矮胖瘦 + 特征强度（每次构建同 seed 稳定）
     bodyW: 0.88 + rng() * 0.3,        // 躯干宽度
@@ -478,7 +482,11 @@ export function buildPet3D(pet) {
     group.rotation.y = Math.sin(t * sway.speed) * sway.amp;
     for (const w of parts.wings) w.rotation.z = (w.userData.side ?? 1) * (0.35 + Math.sin(t * 4.5) * 0.45);
     if (parts.tail) parts.tail.rotation.y = Math.sin(t * 2.2) * 0.35;
-    if (parts.head) parts.head.rotation.z = Math.sin(t * 1.1) * 0.06;
+    if (parts.head) {
+    // 基础朝向（骨架歪头/前倾）+ 呼吸微摆增量——不得整体覆盖（落枕感根因）
+    const bz = parts.head.userData.baseRot?.z ?? 0;
+    parts.head.rotation.z = bz + Math.sin(t * 1.1) * 0.06;
+  }
     if (parts.halo) { parts.halo.rotation.z = t * 1.2; }
     // 进化环绕光点公转 + 上下浮动
     if (parts.orbitDots) {
@@ -569,6 +577,8 @@ export function buildPet3D(pet) {
     }
     root.add(headGroup);
     parts.head = headGroup;
+    // 基础朝向存档：关节动画以它为基准增量旋转（直接归零会抹掉骨架歪头/前倾——落枕感根因）
+    parts.head.userData.baseRot = headGroup.rotation.clone();
 
     // 颈
     const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.26, 0.5, 12), M.body);
@@ -707,6 +717,8 @@ export function buildPet3D(pet) {
     }
     root.add(headGroup);
     parts.head = headGroup;
+    // 基础朝向存档：关节动画以它为基准增量旋转（直接归零会抹掉骨架歪头/前倾——落枕感根因）
+    parts.head.userData.baseRot = headGroup.rotation.clone();
 
     // 短前肢
     for (const s of [-1, 1]) {
@@ -822,6 +834,8 @@ export function buildPet3D(pet) {
     }
     root.add(headGroup);
     parts.head = headGroup;
+    // 基础朝向存档：关节动画以它为基准增量旋转（直接归零会抹掉骨架歪头/前倾——落枕感根因）
+    parts.head.userData.baseRot = headGroup.rotation.clone();
 
     // 尾羽（avian 此前不渲染 look.tail——吞来尾巴无效果）
     parts.tail = makeTail(M, L, 0, 0.35, -0.62, 1.5);
@@ -963,6 +977,8 @@ export function buildPet3D(pet) {
     }
     root.add(headGroup);
     parts.head = headGroup;
+    // 基础朝向存档：关节动画以它为基准增量旋转（直接归零会抹掉骨架歪头/前倾——落枕感根因）
+    parts.head.userData.baseRot = headGroup.rotation.clone();
 
     // 尾巴：抬到尾梢上方并放大（此前被蛇身遮住看不见，吞噬尾巴无效果）
     parts.tail = makeTail(M, L, 0.5, 0.45, 0.15, 1.3);
@@ -1005,6 +1021,8 @@ export function buildPet3D(pet) {
     headGroup.add(mouth);
     root.add(headGroup);
     parts.head = headGroup;
+    // 基础朝向存档：关节动画以它为基准增量旋转（直接归零会抹掉骨架歪头/前倾——落枕感根因）
+    parts.head.userData.baseRot = headGroup.rotation.clone();
 
     // 鱼尾（两片三角）+ 吞噬尾巴款式差异（在鱼尾上叠加特征鳍/绒/电光，保证可见）
     const tailFin = new THREE.Group();
@@ -1127,7 +1145,8 @@ export function buildPet3D(pet) {
     ahoge.rotation.z = -0.25;
     ahoge.name = 'ahoge';
     root.add(ahoge);
-    parts.head = ahoge;
+    // mochi 无独立头组：呆毛不是头（点头动画会让呆毛折断式摆动），头引用置空
+    // （原 parts.head = ahoge 移除）
 
     // 耳朵（mochi 此前不渲染——吞来耳朵无效果；团子脸两侧挂小耳）
     if (L.ears !== 'none') {
