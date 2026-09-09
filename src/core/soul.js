@@ -129,6 +129,34 @@ export function getSoul(uid) {
   return all()[String(uid)] ?? null;
 }
 
+// 临时灵魂（野生精灵战斗心声用）：与 ensureSoul 同构但纯内存——不写 localStorage、
+// 没有与训练家的羁绊（野生精灵是自由身），身份更野性
+export function makeEphemeralSoul(pet) {
+  let a = ((pet.seed ?? 1) * 2654435761 ^ Date.now()) >>> 0;
+  const rnd = () => {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  return {
+    version: 1,
+    createdAt: Date.now(),
+    identity: {
+      origin: pickBy(['独自在荒野长大', '从山洞深处走来', '溪边喝水时被打扰', '领地巡视中', '刚睡醒心情很差', '护崽心切'], rnd),
+      verbalTic: pickBy(VERBAL_TICS, rnd),
+      love: pickBy(LOVES, rnd),
+      hate: pickBy(HATES, rnd),
+      value: pickBy(['这片领地不容侵犯', '自由高于一切', '强者才有话语权', '弱者退散', '守护家园天经地义'], rnd),
+      form: '野生',
+      forms: ['野生'],
+    },
+    traits: rollTraits(pet.seed ?? 1),
+    memory: { profile: [], episodic: [] },
+    relation: { affinity: 0, title: '入侵者', chats: 0, battles: 0, wins: 0, losses: 0 },
+  };
+}
+
 // 删除指定精灵的灵魂档案（放归时调用，避免 localStorage 孤儿数据）
 export function forgetSoul(uid) {
   const store = all();

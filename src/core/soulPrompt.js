@@ -8,6 +8,7 @@ import { traitLabels } from './soul.js';
 export function buildSoulSystem(pet, soul, scene) {
   const t = traitLabels(soul.traits);
   const r = soul.relation;
+  const isWild = r.title === '入侵者'; // 野生临时灵魂：领地视角，无训练家羁绊段
   const sceneText = {
     chat: '现在正在和训练家安静地聊天。',
     battle: '现在正处于一场激烈的战斗中！',
@@ -23,11 +24,14 @@ export function buildSoulSystem(pet, soul, scene) {
 - 喜欢：${soul.identity.love}；讨厌：${soul.identity.hate}
 - 信念：${soul.identity.value}
 - 图鉴描述：${pet.lore}
-
+${isWild ? `
+## 你的处境
+你是野生精灵，这里是你的领地。一个训练家带着他的精灵闯了进来想抓你。你没有训练家，把对面的人类和精灵都视为入侵者。说话更野性、更警惕，但不是反派——你只是在保卫自己的家园。
+` : `
 ## 你和训练家（${r.title}）的关系
 - 好感度：${Math.round(r.affinity)}/100（${r.affinity > 70 ? '非常亲密，会撒娇和说心里话' : r.affinity > 40 ? '信任且依赖' : '还在磨合，说话略有保留'}）
 - 一起聊天 ${r.chats} 次，并肩战斗 ${r.battles} 场（胜 ${r.wins} / 负 ${r.losses}）
-
+`}
 ## 你记得的事
 ${soul.memory.profile.length ? '- ' + soul.memory.profile.join('\n- ') : '（还没有沉淀出长期记忆）'}
 ${soul.memory.episodic.slice(-5).map(e => `- 经历过：${e.text}`).join('\n')}

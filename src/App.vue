@@ -4,7 +4,7 @@ import { save, showToast, spawnWild, adoptPet, party, withStats, gainExp, persis
 import { MAPS } from './data/maps.js';
 import { petSvg } from './core/sprites.js';
 import { isLlmConfigured, generatePetWithLlm, tauntWithSoul, localTaunt } from './core/llm.js';
-import { ensureSoul, updateSoul, driftTraits, touchRelation, addEpisodic, onEvolve, forgetSoul } from './core/soul.js';
+import { ensureSoul, makeEphemeralSoul, updateSoul, driftTraits, touchRelation, addEpisodic, onEvolve, forgetSoul } from './core/soul.js';
 import { forgetChat } from './chat.js';
 import { newBattleState, battleTurn, catchChance } from './core/battle.js';
 import { statsAt, offerDevourMoves, offerDevourParts, applyDevour } from './core/evolve.js';
@@ -173,56 +173,81 @@ function playAnim(kind, who = null, text = null) {
 }
 
 // ---- 战斗吐槽（灵魂驱动：persona + 记忆 + 羁绊；LLM 流式，失败降级本地模板） ----
+// 双气泡：taunt=我方 / wildTaunt=敌方（独立流式互不打断，攻防交替各自说话）
 const taunt = reactive({ text: '', who: null });
+const wildTaunt = reactive({ text: '', who: null });
 let tauntAbort = null;
+let wildTauntAbort = null;
 function soulOf(pet) {
   return ensureSoul(pet);
 }
-function fireTaunt(attacker, defender, evt) {
-  const soul = soulOf(attacker);
-  const trainerTitle = soul.relation.title;
-  // 战场情境描述（喂给 LLM 的这一回合事实）
-  const hpRatio = attacker.hp / Math.max(1, attacker.maxHp);
-  const scene = `你的技能「${evt.moveName}」${evt.crit ? '打出了会心一击' : ''}，对${defender.name}造成 ${evt.damage} 点伤害（${evt.eff >= 2 ? '效果超级拔群' : evt.eff > 1 ? '效果拔群' : evt.eff === 0 ? '完全无效' : evt.eff < 1 ? '效果不佳' : '效果一般'}）。你当前体力 ${Math.round(hpRatio * 100)}%。用一句话说出你此刻的战斗心声。`;
+// 野生精灵临时灵魂：一场战斗一份随机性格（纯内存对象，不进 localStorage——
+// 野生精灵不是玩家的，不该污染玩家精灵的灵魂档案库）
+const wildSoulCache = new Map();
+function wildSoulOf(pet) {
+  if (!wildSoulCache.has(pet.uid ?? pet.seed)) {
+    wildSoulCache.set(pet.uid ?? pet.seed, makeEphemeralSoul(pet));
+    if (wildSoulCache.size > 12) wildSoulCache.delete(wildSoulCache.keys().next().value); // 防泄漏
+  }
+  return wildSoulCache.get(pet.uid ?? pet.seed);
+}
 
-  // 本地兜底立即上屏（LLM 到达后流式覆盖），保证节奏不空窗
-  taunt.text = localTaunt(attacker, defender, evt.moveName, evt.damage, evt.eff, evt.crit, hpRatio, trainerTitle);
-  taunt.who = 'player';
+// 流式渲染一个气泡（SSE 增量 + __STATE__ 行过滤 + 结束后淡出）
+function streamTaunt(bubble, attacker, defender, evt, soul, isWild) {
+  const trainerTitle = soul.relation.title;
+  const hpRatio = attacker.hp / Math.max(1, attacker.maxHp);
+  const effText = evt.eff >= 2 ? '效果超级拔群' : evt.eff > 1 ? '效果拔群' : evt.eff === 0 ? '完全无效' : evt.eff < 1 ? '效果不佳' : '效果一般';
+  // 视角文案：我方=对训练家说心声 / 敌方=野外精灵对入侵者的反应
+  const scene = isWild
+    ? `你是野生精灵，一个训练家带着${defender.name}闯进了你的领地。你用技能「${evt.moveName}」${evt.crit ? '打出了会心一击，' : ''}对${defender.name}造成 ${evt.damage} 点伤害（${effText}）。你当前体力 ${Math.round(hpRatio * 100)}%。用一句话说出你此刻的心声（可以对入侵者放话、嘲讽或为自己打气）。`
+    : `你的技能「${evt.moveName}」${evt.crit ? '打出了会心一击' : ''}，对${defender.name}造成 ${evt.damage} 点伤害（${effText}）。你当前体力 ${Math.round(hpRatio * 100)}%。用一句话说出你此刻的战斗心声。`;
+
+  const localFallback = localTaunt(attacker, defender, evt.moveName, evt.damage, evt.eff, evt.crit, hpRatio, trainerTitle);
+  bubble.who = isWild ? 'wild' : 'player';
 
   if (!llmConfig.enabled || !isLlmConfigured(llmConfig)) {
-    setTimeout(() => { taunt.text = ''; }, 2600);
+    bubble.text = localFallback;
+    setTimeout(() => { if (bubble.text === localFallback) bubble.text = ''; }, 2600);
     return;
   }
-  tauntAbort?.abort();
-  tauntAbort = new AbortController();
-  taunt.text = '';
-  const localFallback = localTaunt(attacker, defender, evt.moveName, evt.damage, evt.eff, evt.crit, hpRatio, trainerTitle);
-  tauntWithSoul(llmConfig, attacker, soul, scene, tauntAbort.signal,
+  const abort = new AbortController();
+  if (isWild) { wildTauntAbort?.abort(); wildTauntAbort = abort; }
+  else { tauntAbort?.abort(); tauntAbort = abort; }
+  bubble.text = '';
+  bubble._raw = '';
+  tauntWithSoul(llmConfig, attacker, soul, scene, abort.signal,
     (delta) => {
-      // 流式增量过滤 __STATE__{...} 状态行：状态是给程序的数据，不应出现在对话气泡里
-      taunt._raw = (taunt._raw ?? '') + delta;
-      const idx = taunt._raw.indexOf('__STATE__');
-      taunt.text = idx >= 0 ? taunt._raw.slice(0, idx).trimEnd() : taunt._raw;
+      bubble._raw = (bubble._raw ?? '') + delta;
+      const idx = bubble._raw.indexOf('__STATE__');
+      bubble.text = idx >= 0 ? bubble._raw.slice(0, idx).trimEnd() : bubble._raw;
     })
     .then(result => {
-      taunt._raw = '';
-      taunt.text = result.body || taunt.text;
-      // 灵魂成长：战斗共识 + LLM 返回的状态
-      import('./core/soul.js').then(({ updateSoul, driftTraits, touchRelation }) => {
+      bubble._raw = '';
+      bubble.text = result.body || bubble.text;
+      // 灵魂成长只对我方精灵生效（野生临时灵魂无需成长）
+      if (!isWild && attacker.uid != null) {
         updateSoul(attacker.uid, (sl) => {
           touchRelation(sl, 'battle');
           driftTraits(sl, result.state.drift);
         });
-      });
-      setTimeout(() => { if (taunt.text === result.body) taunt.text = ''; }, 2800);
+      }
+      setTimeout(() => { if (bubble.text === result.body) bubble.text = ''; }, 2800);
     })
     .catch(() => {
-      // LLM 失败：本地兜底台词上屏（此前 taunt.text 被清空后失败则静默无台词）
-      if (!taunt.text) {
-        taunt.text = localFallback;
-        setTimeout(() => { if (taunt.text === localFallback) taunt.text = ''; }, 2600);
+      // LLM 失败：本地兜底台词上屏（此前 bubble.text 被清空后失败则静默无台词）
+      if (!bubble.text) {
+        bubble.text = localFallback;
+        setTimeout(() => { if (bubble.text === localFallback) bubble.text = ''; }, 2600);
       }
     });
+}
+
+function fireTaunt(attacker, defender, evt) {
+  streamTaunt(taunt, attacker, defender, evt, soulOf(attacker), false);
+}
+// 敌方精灵的战斗心声（流式）：野生灵魂 + 野外视角
+function fireWildTaunt(attacker, defender, evt) {
+  streamTaunt(wildTaunt, attacker, defender, evt, wildSoulOf(attacker), true);
 }
 function fireTauntMiss(attacker, defender) {
   const soul = soulOf(attacker);
@@ -246,6 +271,7 @@ async function act(action) {
       if (e.type === 'damage') {
         playAnim('hit', e.side === 'player' ? 'wild' : 'player', `-${e.damage}${e.crit ? ' 会心!' : ''}`);
         if (e.side === 'player') fireTaunt(state.active, state.wild, e);
+        else if (e.side === 'wild') fireWildTaunt(state.wild, state.active, e); // 敌方也有战斗心声（流式）
       } else if (e.type === 'heal') {
         playAnim('buff', e.side, `+${e.amount}`);
       } else if (e.type === 'buff' || e.type === 'miss') {
@@ -645,11 +671,17 @@ onMounted(() => { view.value = 'map'; });
           <div class="float-layer">
             <span v-for="f in floatTexts" :key="f.id" class="float-txt" :class="'who-' + f.who">{{ f.text }}</span>
           </div>
-          <!-- 灵魂对话气泡：流式输出在竞技场底部（精灵下方），随说话者靠左/靠右 -->
+          <!-- 灵魂对话气泡：流式输出在竞技场底部（精灵下方），随说话者靠左/靠右；双方独立互不打断 -->
           <Transition name="taunt">
             <div v-if="taunt.text" class="taunt-bubble" :class="'taunt-' + (taunt.who === 'wild' ? 'wild' : 'mine')">
               <span class="taunt-who">{{ taunt.who === 'wild' ? battle.wild.name : battle.active.name }}</span>
               <span class="taunt-text">{{ taunt.text }}</span>
+            </div>
+          </Transition>
+          <Transition name="taunt">
+            <div v-if="wildTaunt.text" class="taunt-bubble taunt-wild">
+              <span class="taunt-who">{{ battle.wild.name }}</span>
+              <span class="taunt-text">{{ wildTaunt.text }}</span>
             </div>
           </Transition>
         </div>
