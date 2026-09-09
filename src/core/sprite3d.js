@@ -376,12 +376,12 @@ export function buildPet3D(pet) {
   if (extras.length) {
     // 脸中心世界坐标（六骨架统一锚点=parts.eyes 所在父级的原点；用于头侧叠件定位）
     const headAnchor = parts.eyes?.parent ?? parts.head ?? group;
-    const headTop = { x: 0, y: 0 };
+    let headTop = { x: 0, y: 0 };
     if (parts.eyes) {
       const wp = new THREE.Vector3();
       parts.eyes.getWorldPosition(wp);
       headAnchor.worldToLocal(wp);
-      headTop = { x: wp.x, y: wp.y };
+      headTop = { x: wp.x, y: wp.y }; // 修正：这里会重赋值，必须 let（const 会抛 Assignment to constant variable）
     }
     extras.forEach((ex, i) => {
       const layer = i * 0.06; // 极小逐件错位（贴身设计）

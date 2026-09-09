@@ -22,8 +22,11 @@ const server = createServer((req, res) => {
     res.writeHead(404); res.end('not found');
   }
 });
-await new Promise(r => server.listen(4173, r));
-console.log('static server on :4173');
+// 端口用 0（系统分配空闲端口）：4173 固定端口会被残留 node 服务占用
+// （旧服务 serve 的 dist/index.html 引用已过期 hash 资产 → lazy 图 404 → 假失败）
+await new Promise(r => server.listen(0, '127.0.0.1', r));
+const PORT = server.address().port;
+console.log('static server on :' + PORT);
 
 const channel = process.env.PLAYWRIGHT_CHANNEL;
 const browser = await chromium.launch(channel ? { channel } : {});
@@ -33,7 +36,7 @@ const errors = [];
 page.on('pageerror', e => errors.push(`pageerror: ${e.message}`));
 page.on('console', m => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
 
-const base = 'http://127.0.0.1:4173/funny-pets/';
+const base = 'http://127.0.0.1:' + PORT + '/funny-pets/';
 
 // 关闭庆祝弹窗（等待出现→点击→等待消失）
 async function dismissCelebration(timeout = 6000) {
@@ -54,8 +57,12 @@ const petCards = await page.locator('.pet-card').count();
 if (petCards !== 6) throw new Error(`精灵展示带 ${petCards} != 6`);
 const petImgs = await page.locator('.pet-card img').count();
 if (petImgs !== 6) throw new Error(`3D 快照 img ${petImgs} != 6`);
-// 确认快照图真实加载（非破图）
-const imgOk = await page.evaluate(() => [...document.querySelectorAll('.pet-card img')].every(i => i.complete && i.naturalWidth > 0));
+// 确认快照图真实加载（非破图）。lazy 图 decode 时机晚于 networkidle（build 时序敏感），
+// 用 waitForFunction 等待而非立即断言——图确实可加载，立即查会间歇性误报
+const imgOk = await page.waitForFunction(
+  () => [...document.querySelectorAll('.pet-card img')].every(i => i.complete && i.naturalWidth > 0),
+  { timeout: 5000 },
+).then(() => true).catch(() => false);
 if (!imgOk) throw new Error('3D 快照 PNG 加载失败');
 const typeChips = await page.locator('.type-cloud .chip').count();
 if (typeChips !== 18) throw new Error(`属性云 ${typeChips} != 18`);
@@ -165,6 +172,12 @@ if (forceSwitchSeen) {
 const b1 = await dismissCelebration();
 if (b1) console.log(`✓ 战斗结算弹窗（${b1.trim()}）`);
 await dismissCelebration();
+// 吞噬选择窗（每场胜利都掷，庆祝关闭后弹出）：确认吞噬或跳过，否则遮罩挡住后续操作
+for (let i = 0; i < 3; i++) {
+  if (!(await page.locator('.devour-mask').count())) break;
+  await page.getByRole('button', { name: /跳过/ }).click().catch(() => page.getByRole('button', { name: /确认吞噬/ }).click().catch(() => {}));
+  await page.waitForTimeout(500);
+}
 await page.waitForTimeout(600);
 
 // 图鉴：3D 快照
