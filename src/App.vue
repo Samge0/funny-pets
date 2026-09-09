@@ -63,8 +63,9 @@ function petSnapshot(pet) {
   return snapCache.get(key);
 }
 function petSnapshotKey(pet) {
-  const lookSig = `${pet.look.ears}-${pet.look.tail}-${pet.look.accessory}-${pet.look.pattern}`;
-  return `${pet.seed}:${pet.phase ?? 0}:${lookSig}`;
+  const lookSig = `${pet.look.ears}-${pet.look.tail}-${pet.look.accessory}-${pet.look.pattern}-${pet.look.eyes}-${pet.look.body}`;
+  const extraSig = (pet.extraParts ?? []).map(e => `${e.part}=${e.value}`).join(',');
+  return `${pet.seed}:${pet.phase ?? 0}:${lookSig}:${extraSig}`;
 }
 
 // ---- 刷新野生精灵 ----
@@ -333,6 +334,9 @@ async function winBattle() {
         petName: mine.name,
         seed: mine.seed,
         petTypes: mine.types,
+        petPhase: mine.phase ?? 0,
+        petBodyType: mine.bodyType ?? null,
+        currentExtraParts: [...(mine.extraParts ?? [])],
         defeatedName: state.wild.name,
         moves: moveOffers,
         parts: partOffers,

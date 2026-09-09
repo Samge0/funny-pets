@@ -160,6 +160,33 @@ function makeBodyPattern(M, L, radius, opts = {}) {
   return g;
 }
 
+// 独立配饰件（吞噬叠加用）：按 accessory 值生成小配饰组，可挂到任意位置
+function makeAccessoryOnly(M, L, scale = 1) {
+  const g = new THREE.Group();
+  if (L.accessory === 'gem') {
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.12 * scale * 4), toonMat(new THREE.Color(0x7fd4e8)));
+    g.add(gem);
+  } else if (L.accessory === 'flower') {
+    for (let p = 0; p < 5; p++) {
+      const petal = new THREE.Mesh(new THREE.SphereGeometry(0.06 * scale * 4, 8, 8), toonMat(new THREE.Color(0xe87a9a)));
+      const a = (p / 5) * Math.PI * 2;
+      petal.position.set(Math.cos(a) * 0.08, Math.sin(a) * 0.08, 0);
+      g.add(petal);
+    }
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.045 * scale * 4, 8, 8), toonMat(new THREE.Color(0xf4d03c)));
+    g.add(core);
+  } else if (L.accessory === 'leaf') {
+    const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.13 * scale * 4, 10, 8), toonMat(new THREE.Color(0x7ec850)));
+    leaf.scale.set(0.32, 0.85, 1);
+    leaf.rotation.z = 0.5;
+    g.add(leaf);
+  } else if (L.accessory === 'horn') {
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.09 * scale * 4, 0.34 * scale * 4, 8), M.type);
+    g.add(horn);
+  }
+  return g;
+}
+
 // 腿关节：把腿网格包进 pivot 组（pivot 在髋部，腿网格相对下移），
 // 之后 Pet3D 旋转 pivot.x 即抬腿/踢腿。返回 pivot（调用方 add 到 root 并收集到 parts.legs）
 function makeLegJoint(buildMesh, hipX, hipY, hipZ) {
@@ -333,6 +360,32 @@ export function buildPet3D(pet) {
   else if (bodyType === 'serpent') buildSerpent();
   else if (bodyType === 'aquatic') buildAquatic();
   else buildMochi();
+
+  // ---- 共通：吞噬叠加件（extraParts：同维度多件挂件，错开位置渲染）----
+  const extras = Array.isArray(pet.extraParts) ? pet.extraParts : [];
+  if (extras.length) {
+    const EX_OFFSET = { ears: 0, tail: 1, accessory: 2, pattern: 0, eyes: 0 };
+    extras.forEach((ex, i) => {
+      const layer = i * 0.22; // 逐件错位（高度/侧移），避免完全重叠
+      if (ex.part === 'ears') {
+        const e = makeEars({ ...M }, { ...L, ears: ex.value }, 0.55, -1 - layer * 0.3);
+        const e2 = makeEars({ ...M }, { ...L, ears: ex.value }, 0.55, 1 + layer * 0.3);
+        e.position.set(-0.15 - layer * 0.12, 1.15 + layer * 0.1, 0);
+        e2.position.set(0.15 + layer * 0.12, 1.15 + layer * 0.1, 0);
+        group.add(e, e2);
+      } else if (ex.part === 'tail') {
+        const t = makeTail(M, { ...L, tail: ex.value }, 0.95 + layer * 0.2, 0.55 + EX_OFFSET.tail * 0.1 + layer * 0.25, -0.55, 1.1 + layer * 0.15);
+        group.add(t);
+      } else if (ex.part === 'accessory') {
+        const acc = { ...L, accessory: ex.value };
+        const holder = new THREE.Group();
+        holder.position.set(-0.35 - layer * 0.28, 1.3 + layer * 0.16, 0.25);
+        holder.add(makeAccessoryOnly(M, acc, 0.16));
+        group.add(holder);
+      }
+      // pattern/eyes 为表面纹理/器官——不参与叠加（同维度视觉互斥），跳过
+    });
+  }
 
   // ---- 共通：进化相位（越来越炫酷）----
   group.scale.setScalar((1 + phase * 0.16) * (0.95 + rng() * 0.08));

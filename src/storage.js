@@ -31,6 +31,7 @@ export function validateSave(value) {
       || !Number.isSafeInteger(p.level) || p.level < 1 || p.level > 50
       || !Number.isSafeInteger(p.exp) || p.exp < 0 || p.exp > 1e12 || !Number.isSafeInteger(p.phase) || p.phase < 0 || p.phase > 2
       || typeof p.name !== 'string') throw new Error(`精灵数据无效 uid=${p?.uid}`);
+    if (p.extraParts !== undefined && !Array.isArray(p.extraParts)) throw new Error(`叠加部件无效 uid=${p?.uid}`);
     if (uids.has(p.uid)) throw new Error('uid 重复');
     uids.add(p.uid);
   }

@@ -96,7 +96,8 @@ const pet = computed(() => props.pet);
 const modelTag = computed(() => {
   if (!props.pet) return '0';
   const l = props.pet.look ?? {};
-  return `${props.pet.seed}:${props.pet.phase ?? 0}:${l.ears}-${l.tail}-${l.accessory}-${l.pattern}`;
+  const ex = (props.pet.extraParts ?? []).map(e => `${e.part}=${e.value}`).join(",");
+  return `${props.pet.seed}:${props.pet.phase ?? 0}:${l.ears}-${l.tail}-${l.accessory}-${l.pattern}:${l.eyes}:${l.body}:${ex}`;
 });
 // soul 从 soul.js 实时取（详情打开期间好感/记忆变化要反映到 UI）
 const soul = computed(() => (props.pet ? ensureSoul(props.pet) : null));

@@ -49,6 +49,9 @@ export const offer = reactive({
   petName: '',
   seed: 1,           // 预览 SVG 渲染用（花纹等 seed 维度）
   petTypes: ['一般'], // 预览渲染用属性色（与实际精灵一致）
+  petPhase: 0,       // 预览 3D 渲染用进化相位（光环/光点/王冠与实际一致）
+  petBodyType: null, // 预览 3D 骨架（实际精灵当前骨架，未被 body 吞噬覆盖时保持）
+  currentExtraParts: [], // 宠物已有叠加件（预览叠加渲染基准）
   defeatedName: '',
   moves: [],         // 候选技能 [{name,power,type,effect}]
   parts: [],         // 候选部件 [{part, theirs}]

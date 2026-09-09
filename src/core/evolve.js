@@ -104,13 +104,23 @@ export function applyDevour(pet, movePicks, partPicks) {
   }
   for (const pick of partPicks) {
     const old = pet.look[pick.part];
-    pet.look = { ...pet.look, [pick.part]: pick.theirs };
-    // 体型（body）在 3D 侧由 bodyType 驱动骨架：同步覆盖才能让吞来的体型真正生效
-    if (pick.part === 'body') {
-      const BODY_MAP = { round: 'mochi', pear: 'bipedal', tall: 'bipedal', blob: 'quadruped', drop: 'serpent' };
-      pet.bodyType = BODY_MAP[pick.theirs] ?? pet.bodyType;
+    const isEmpty = old == null || old === 'none' || old === '';
+    if (isEmpty) {
+      // 空槽位 → 直接长出（真正的"新增"）
+      pet.look = { ...pet.look, [pick.part]: pick.theirs };
+      desc.push(`长出了${PART_LABELS[pick.part] ?? pick.part}（${pick.theirs}）`);
+    } else {
+      // 已有部件 → 叠加挂件（extraParts 数组，可叠多件；body 例外：骨架互斥只能替换）
+      if (pick.part === 'body') {
+        pet.look = { ...pet.look, body: pick.theirs };
+        const BODY_MAP = { round: 'mochi', pear: 'bipedal', tall: 'bipedal', blob: 'quadruped', drop: 'serpent' };
+        pet.bodyType = BODY_MAP[pick.theirs] ?? pet.bodyType;
+        desc.push(`体型变化：${old} → ${pick.theirs}`);
+      } else {
+        pet.extraParts = [...(pet.extraParts ?? []), { part: pick.part, value: pick.theirs }].slice(-8); // 上限 8 叠件
+        desc.push(`叠加了${PART_LABELS[pick.part] ?? pick.part}（${pick.theirs}）`);
+      }
     }
-    desc.push(`${PART_LABELS[pick.part] ?? pick.part}: ${old} → ${pick.theirs}`);
   }
   return desc;
 }

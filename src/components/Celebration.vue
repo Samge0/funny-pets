@@ -51,7 +51,8 @@ const displayPet = computed(() => celebration.pet ? withStats(celebration.pet) :
 const modelTag = computed(() => {
   if (!celebration.pet) return '0';
   const l = celebration.pet.look ?? {};
-  return `${celebration.pet.seed}:${celebration.pet.phase ?? 0}:${l.ears}-${l.tail}-${l.accessory}-${l.pattern}`;
+  const ex = (celebration.pet.extraParts ?? []).map(e => `${e.part}=${e.value}`).join(",");
+  return `${celebration.pet.seed}:${celebration.pet.phase ?? 0}:${l.ears}-${l.tail}-${l.accessory}-${l.pattern}:${l.eyes}:${l.body}:${ex}`;
 });
 // 升级属性增量 chips（statGains 由 winBattle 写入 celebration.detailObj）
 const statChips = computed(() => {
