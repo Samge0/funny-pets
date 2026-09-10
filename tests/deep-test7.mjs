@@ -31,10 +31,22 @@ function report(id, name, bugRepro, detail) {
 async function dismissCelebration(timeout = 5000) {
   try {
     await page.locator('.cele-btn').waitFor({ state: 'visible', timeout });
+    const banner = await page.locator('.cele-banner').textContent().catch(() => '');
     await page.locator('.cele-btn').click();
     await page.locator('.cele-card').waitFor({ state: 'detached', timeout: 2500 }).catch(() => {});
     await page.waitForTimeout(150);
-  } catch {}
+    return banner;
+  } catch { return null; }
+}
+// 关闭吞噬提案弹窗（确认吞噬——让技能/部件真实入档供 G8 断言）
+async function confirmDevour(timeout = 4000) {
+  try {
+    const ok = page.locator('.devour-actions .primary');
+    await ok.waitFor({ state: 'visible', timeout });
+    await ok.click();
+    await page.waitForTimeout(300);
+    return true;
+  } catch { return false; }
 }
 const mkPet = (uid, seed, over = {}) => ({
   uid, seed, name: `测${uid}`, types: ['水'], rarity: 'common',
@@ -147,7 +159,7 @@ const beforePet = await page.evaluate(() => {
   const p = JSON.parse(localStorage.getItem('funny-pets-save-v1')).pets[0];
   return { level: p.level, moves: p.moves.map(m => m.name), ...p.look };
 });
-let devourSeen = false, lvlSeen = false, bannerDetail = '';
+let devourSeen = false, lvlSeen = false, devourHandled = false, bannerDetail = '';
 for (let round = 0; round < 12 && !lvlSeen; round++) {
   await page.locator('.map-card').nth(0).click();
   await page.locator('.wild-card').waitFor({ timeout: 8000 });
@@ -164,23 +176,23 @@ for (let round = 0; round < 12 && !lvlSeen; round++) {
     if (await btn.count()) await btn.first().click();
     await page.waitForTimeout(520);
   }
-  // 升级弹窗文案检查吞噬描述
-  const banner = await page.locator('.cele-banner').textContent().catch(() => '');
-  const detail = await page.locator('.cele-detail').textContent().catch(() => '');
-  if (banner.includes('等级提升') || detail.includes('升到了')) {
+  // 升级弹窗文案检查吞噬描述（软锁修复后：cele 先关，devour 后弹）
+  // 庆祝 banner 文案判断升级（dismissCelebration 返回 banner 文本）
+  const banner = await dismissCelebration();
+  if (banner && banner.includes('升到了')) {
     lvlSeen = true;
-    bannerDetail = detail;
-    devourSeen = detail.includes('吞噬') || detail.includes('掠夺');
-    if (devourSeen) console.log(`  吞噬弹窗文案: ${detail.slice(0, 80)}`);
+    bannerDetail = banner;
+    devourSeen = banner.includes('吞噬') || banner.includes('掠夺');
   }
-  await dismissCelebration(); await dismissCelebration();
+  // 吞噬提案弹窗（软锁修复后先庆祝后吞噬）：确认吞噬让战利品入档（G8 数据层断言）
+  if (await confirmDevour()) devourHandled = true;
   if ((await page.evaluate(() => JSON.parse(localStorage.getItem('funny-pets-save-v1')).pets[0].level)) >= 5) break;
 }
 const after = await page.evaluate(() => JSON.parse(localStorage.getItem('funny-pets-save-v1')).pets[0]);
 const moveGain = after.moves.length > beforePet.moves.length || after.moves.some(m => !beforePet.moves.includes(m.name));
 const partGain = ['ears', 'tail', 'accessory'].some(k => beforePet[k] !== after.look[k] && after.look[k] !== 'none');
-const devourData = lvlSeen && (moveGain || partGain);
-report('G8', '升级吞噬（弹窗描述或数据层面技能/部件增加）', lvlSeen && !(devourSeen || devourData),
+const devourData = (moveGain || partGain) || devourHandled;
+report('G8', '升级吞噬（弹窗确认或数据层面技能/部件增加）', lvlSeen && !(devourSeen || devourData),
   `升级=${lvlSeen}(Lv${beforePet.level}→Lv${after.level}), 弹窗文案="${bannerDetail.slice(0, 50)}", 技能增=${moveGain}(${after.moves.map(m => m.name).join('/')}), 部件增=${partGain}(ears=${after.look.ears},tail=${after.look.tail},acc=${after.look.accessory})`);
 
 if (errors.length) console.log('\n页面错误:\n' + errors.join('\n'));

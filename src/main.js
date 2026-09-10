@@ -7,7 +7,8 @@ const app = createApp(App);
 app.config.errorHandler = (error) => {
   console.error('Application error', error);
   const loading = document.getElementById('app');
-  if (loading) loading.textContent = `出错了：${error.message}，请刷新页面重试`;
+  // 不把 error.message 原样上屏：LLM/网络异常文本可能携带 baseUrl 等敏感配置细节
+  if (loading) loading.textContent = '出错了，请刷新页面重试（本地存档不受影响）';
 };
 app.mount('#app');
 

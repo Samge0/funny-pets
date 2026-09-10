@@ -60,7 +60,12 @@ set('妖精', ['毒', '钢'], 0.5);
 set('妖精', ['格斗', '龙', '恶'], 2);
 
 export function effectiveness(attackerType, defenderType) {
-  return CHART[T.indexOf(attackerType)][T.indexOf(defenderType)];
+  // 防御兜底：未知属性（老存档/外部数据）indexOf=-1 → CHART[-1] undefined → 上层崩溃白屏。
+  // 语义：任何无法识别的克制关系按 1 倍（无克制）处理，让战斗继续而不是崩。
+  const ai = T.indexOf(attackerType);
+  const di = T.indexOf(defenderType);
+  if (ai < 0 || di < 0) return 1;
+  return CHART[ai][di];
 }
 
 // 防守方受到的综合倍率（双属性时相乘）

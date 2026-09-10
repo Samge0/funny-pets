@@ -48,7 +48,8 @@ const TYPE_ACCENT = {
 export function paletteOf(pet) {
   // palette 兜底：分享链接数据缺 palette（截断/手改）时 PALETTES[NaN]=undefined
   // → pal.body 读取抛错 → 整页白屏（errorHandler 替换 #app）
-  const idx = Number.isInteger(pet.look?.palette) ? pet.look.palette % PALETTES.length : 0;
+  // 负数取模仍为负索引（PALETTES[-5]=undefined），统一 ((i % len) + len) % len 归一
+  const idx = Number.isInteger(pet.look?.palette) ? ((pet.look.palette % PALETTES.length) + PALETTES.length) % PALETTES.length : 0;
   const pal = PALETTES[idx] ?? PALETTES[0];
   return {
     body: new THREE.Color(pal.body),

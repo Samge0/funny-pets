@@ -31,10 +31,22 @@ function report(id, name, bugRepro, detail) {
 async function dismissCelebration(timeout = 5000) {
   try {
     await page.locator('.cele-btn').waitFor({ state: 'visible', timeout });
+    const banner = await page.locator('.cele-banner').textContent().catch(() => '');
     await page.locator('.cele-btn').click();
     await page.locator('.cele-card').waitFor({ state: 'detached', timeout: 2500 }).catch(() => {});
     await page.waitForTimeout(150);
-  } catch {}
+    return banner;
+  } catch { return null; }
+}
+// 关闭吞噬提案弹窗（跳过）：庆祝关闭后吞噬弹窗才出现（软锁修复改变了时序）
+async function dismissDevour(timeout = 4000) {
+  try {
+    const skip = page.locator('.devour-actions .ghost');
+    await skip.waitFor({ state: 'visible', timeout });
+    await skip.click();
+    await page.waitForTimeout(200);
+    return true;
+  } catch { return false; }
 }
 // 捕捉一只（直丢球）；返回捕获数
 async function catchSome(n = 1) {
@@ -57,6 +69,8 @@ async function catchSome(n = 1) {
 }
 // 打完整一场战斗（只用攻击技直到分出胜负；处理换宠/弹窗），返回 ended
 async function fightOnce() {
+  // 上一轮可能遗留吞噬弹窗（每轮胜利都掷吞噬）：先关掉再进地图
+  await dismissDevour();
   await page.locator('.map-card').nth(0).click();
   await page.locator('.wild-card').waitFor({ timeout: 8000 });
   await page.getByRole('button', { name: /开战/ }).click();
@@ -110,7 +124,7 @@ for (let i = 0; i < 40; i++) {
   if (await ballBtn.count()) await ballBtn.click();
   await page.waitForTimeout(600);
 }
-await dismissCelebration();
+await dismissCelebration(); await dismissDevour();
 const caught2 = await page.evaluate(() => {
   const raw = JSON.parse(localStorage.getItem('funny-pets-save-v1'));
   return raw.pets[raw.pets.length - 1];
@@ -127,6 +141,7 @@ const partyBefore = await page.evaluate(() => {
 let fightResult = 'timeout';
 for (let t = 0; t < 8 && fightResult === 'timeout'; t++) fightResult = await fightOnce();
 await dismissCelebration(); await dismissCelebration();
+await dismissDevour();
 const partyAfter = await page.evaluate(() => {
   const raw = JSON.parse(localStorage.getItem('funny-pets-save-v1'));
   return raw.partyIds.map(id => { const p = raw.pets.find(x => x.uid === id); return { uid: p.uid, hp: p.hp }; });

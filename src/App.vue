@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue';
-import { save, showToast, spawnWild, adoptPet, party, withStats, gainExp, persist, rarityInfo, mapInfo, isMapUnlocked, mapLevelRange, llmConfig, saveLlmConfig, petByUid, celebration, closeCelebration, celebrate, requestDevourChoice } from './store.js';
+import { save, showToast, spawnWild, adoptPet, party, withStats, gainExp, persist, rarityInfo, mapInfo, isMapUnlocked, mapLevelRange, llmConfig, saveLlmConfig, petByUid, celebration, closeCelebration, celebrate, waitCelebrationClosed, requestDevourChoice } from './store.js';
 import { MAPS } from './data/maps.js';
 import { petSvg } from './core/sprites.js';
 import { isLlmConfigured, generatePetWithLlm, tauntWithSoul, localTaunt } from './core/llm.js';
@@ -433,6 +433,9 @@ async function winBattle() {
       battle.value = null;
       wild.value = null;
       view.value = 'map';
+      // 先庆祝、玩家关掉庆祝弹窗后再弹吞噬提案：两 mask 同帧共存时吞噬(z=210)
+      // 盖住庆祝(z=200)的「太棒了！」按钮 → 庆祝关不掉 → 软锁（deep-test8 稳定复现）
+      await waitCelebrationClosed();
       const { movePicks, partPicks } = await requestDevourChoice({
         petUid: mine.uid,
         petName: mine.name,

@@ -26,6 +26,10 @@ export function persist() {
 
 // ---- 全屏庆祝弹窗状态（捕捉/进化/升级共用） ----
 export const celebration = reactive({ show: false, kind: null, pet: null, detail: null, statGains: null });
+// 庆祝弹窗关闭回调：winBattle 等异步流程用它实现「先庆祝、玩家关掉后再弹吞噬提案」。
+// 此前 celebrate() 与 requestDevourChoice() 同步连续调用，两个全屏 mask 同帧共存
+// （cele z=200 < devour z=210），吞噬弹窗盖住「太棒了！」→ 庆祝弹窗永远关不掉 → 软锁。
+let celebrationWaiters = [];
 export function celebrate(kind, pet, detail = null, statGains = null) {
   celebration.kind = kind;
   celebration.pet = pet;
@@ -39,6 +43,14 @@ export function closeCelebration() {
   celebration.pet = null;
   celebration.detail = null;
   celebration.statGains = null;
+  const waiters = celebrationWaiters;
+  celebrationWaiters = [];
+  for (const w of waiters) w();
+}
+/** 等待当前庆祝弹窗被玩家关闭（无弹窗时立即返回） */
+export function waitCelebrationClosed() {
+  if (!celebration.show) return Promise.resolve();
+  return new Promise(resolve => { celebrationWaiters.push(resolve); });
 }
 
 // ---- 吞噬提案（战利品弹窗）：胜利结算掷出 → 玩家在 DevourChoice 里自选 → 应用 ----

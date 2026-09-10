@@ -58,35 +58,20 @@ await page.evaluate(src => {
 }, mkPetSrc);
 await page.reload({ waitUntil: 'networkidle' });
 
-// ============ K1: 图鉴拖动排序 ============
+// ============ K1: 图鉴排序（按钮版：2df94d3 起三按钮替代拖拽） ============
 await page.getByRole('button', { name: '图鉴' }).click();
 await page.waitForTimeout(500);
 const beforeOrder = await page.evaluate(() => JSON.parse(localStorage.getItem('funny-pets-save-v1')).pets.map(p => p.uid));
-// 把第 1 张拖到第 4 张上（HTML5 DnD：Playwright 需手动 dispatch drag events）
-const src = page.locator('.dex-card').nth(0);
-const dst = page.locator('.dex-card').nth(3);
-await src.hover();
-await page.mouse.down();
-await dst.hover();
-await page.mouse.up(); // 浏览器原生 DnD 需事件流；Playwright 直接调 handler 更可靠：
-// 兜底：直接 dispatch dragstart/drop（Vue 的 @dragstart/@drop 绑定会收到）
-const orderBeforeDrop = await page.evaluate(() => JSON.parse(localStorage.getItem('funny-pets-save-v1')).pets.map(p => p.uid));
-await page.evaluate(() => {
-  const cards = [...document.querySelectorAll('.dex-card')];
-  const fire = (el, type) => {
-    const ev = new DragEvent(type, { bubbles: true, cancelable: true });
-    Object.defineProperty(ev, 'dataTransfer', { value: { setData() {}, effectAllowed: 'move', dropEffect: 'move' } });
-    el.dispatchEvent(ev);
-  };
-  fire(cards[0], 'dragstart');
-  fire(cards[3], 'dragover');
-  fire(cards[3], 'drop');
-});
+// 把第 1 张下移 3 次 → 到第 4 位（按钮排序是现行实现；旧拖拽版 UI 已删）
+for (let i = 0; i < 3; i++) {
+  await page.locator('.dex-card').nth(0).locator('.sort-btn[title="下移"]').click();
+  await page.waitForTimeout(120);
+}
 await page.waitForTimeout(400);
 const afterOrder = await page.evaluate(() => JSON.parse(localStorage.getItem('funny-pets-save-v1')).pets.map(p => p.uid));
 const moved = afterOrder.indexOf(beforeOrder[0]) > 0 && afterOrder.length === beforeOrder.length
   && JSON.stringify([...afterOrder].sort((a, b) => a - b)) === JSON.stringify(beforeOrder);
-report('K1', '图鉴拖拽排序（第1张拖到第4张上，顺序变化且持久化）', !moved,
+report('K1', '图鉴按钮排序（第1张下移3次到第4位，顺序变化且持久化）', !moved,
   `前=[${beforeOrder}] 后=[${afterOrder}]`);
 
 // ============ K2: 战斗中主动换宠 ============
