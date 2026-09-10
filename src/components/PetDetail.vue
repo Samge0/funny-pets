@@ -4,19 +4,22 @@
   <Transition name="detail">
     <div v-if="pet" class="detail-mask" @click.self="close">
       <div class="detail-card">
-        <button class="detail-close" @click="close">✕</button>
-        <!-- 赠送：生成 #g= 链接，好友打开领取一只克隆（自己不失去宠物） -->
-        <button class="detail-gift" @click="gift" :title="t('生成赠送链接——好友打开后可领取一只它的克隆（你不会失去它）')">{{ gifting ? t('🎁 生成中…') : t('🎁 赠送') }}</button>
-        <!-- 分享：生成 #p= 链接给好友观赏/挑战（查看者只读+可挑战，不能聊天） -->
-        <button class="detail-share" @click="share" :title="t('生成 AI 分享文案+链接（复制后可直接发社交平台）')" :disabled="sharing">{{ sharing ? t('✨ 生成中…') : t('📣 分享') }}</button>
-        <button class="detail-share-link" @click="copyLink" :title="t('仅复制分享链接')">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-          </svg>
-        </button>
-        <!-- 重译：把这只精灵的名字/图鉴翻译成当前语言（解决"生成时是另一种语言"的历史存档） -->
-        <button class="detail-retranslate" v-if="llmReady" @click="retranslate" :disabled="retranslating" :title="t('把名字与图鉴描述重译为当前语言（需要 AI 已启用）')">{{ retranslating ? '🌐…' : '🌐 重译' }}</button>
+        <!-- 顶部操作条：flex 自适应布局——各语言文案宽度不同（EN "Retranslate"/"Gift" 比中文宽），
+             绝对定位+硬编码 right 会在切换语言后重叠，这里按内容流式排列 -->
+        <div class="detail-actions-bar">
+          <button v-if="llmReady" class="detail-retranslate" @click="retranslate" :disabled="retranslating" :title="t('把名字与图鉴描述重译为当前语言（需要 AI 已启用）')">{{ retranslating ? '🌐…' : t('🌐 重译') }}</button>
+          <!-- 赠送：生成 #g= 链接，好友打开领取一只克隆（自己不失去宠物） -->
+          <button class="detail-gift" @click="gift" :title="t('生成赠送链接——好友打开后可领取一只它的克隆（你不会失去它）')">{{ gifting ? t('🎁 生成中…') : t('🎁 赠送') }}</button>
+          <!-- 分享：生成 #p= 链接给好友观赏/挑战（查看者只读+可挑战，不能聊天） -->
+          <button class="detail-share" @click="share" :title="t('生成 AI 分享文案+链接（复制后可直接发社交平台）')" :disabled="sharing">{{ sharing ? t('✨ 生成中…') : t('📣 分享') }}</button>
+          <button class="detail-share-link" @click="copyLink" :title="t('仅复制分享链接')" aria-label="copy link">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            </svg>
+          </button>
+          <button class="detail-close" @click="close" aria-label="close">✕</button>
+        </div>
         <div class="detail-top">
           <div class="detail-sprite"><Pet3D :key="modelTag" :pet="pet" :size="140" /></div>
           <div class="detail-meta">
@@ -315,13 +318,18 @@ function clearChat() {
   animation: detail-pop 0.4s cubic-bezier(0.2, 1.4, 0.4, 1);
 }
 @keyframes detail-pop { from { transform: scale(0.85) translateY(20px); opacity: 0; } to { transform: none; opacity: 1; } }
+/* 顶部操作条：flex 排列自适应各语言文案宽度（替代旧的绝对定位——EN 文案更宽会重叠） */
+.detail-actions-bar {
+  display: flex; align-items: center; justify-content: flex-end;
+  gap: 6px; flex-wrap: wrap; margin-bottom: 6px;
+}
 .detail-close {
-  position: absolute; top: 10px; right: 10px; width: 30px; height: 30px;
+  width: 30px; height: 30px; flex-shrink: 0;
   border-radius: 50%; border: none; background: rgba(120,130,160,0.14);
   font-size: 14px; cursor: pointer;
 }
 .detail-gift {
-  position: absolute; top: 10px; right: 158px; height: 30px; padding: 0 12px;
+  height: 30px; padding: 0 12px; flex-shrink: 0;
   border-radius: 15px; border: 1px solid rgba(232,134,44,0.5);
   background: rgba(255,255,255,0.9); color: #d85a20;
   font-size: 12.5px; cursor: pointer; white-space: nowrap;
@@ -329,7 +337,7 @@ function clearChat() {
 .detail-gift:disabled { opacity: 0.65; cursor: wait; }
 .detail-gift:hover:not(:disabled) { background: linear-gradient(120deg, #e8862c, #d85a20); color: #fff; }
 .detail-share {
-  position: absolute; top: 10px; right: 82px; height: 30px; padding: 0 12px;
+  height: 30px; padding: 0 12px; flex-shrink: 0;
   border-radius: 15px; border: 1px solid rgba(91,127,212,0.45);
   background: rgba(255,255,255,0.9); color: var(--primary-deep, #4664b0);
   font-size: 12.5px; cursor: pointer; white-space: nowrap;
@@ -338,7 +346,7 @@ function clearChat() {
 .detail-share:hover:not(:disabled) { background: var(--primary, #5b7fd4); color: #fff; }
 /* 链接图标按钮：紧贴分享按钮右侧、挨着关闭钮 */
 .detail-share-link {
-  position: absolute; top: 10px; right: 48px; width: 30px; height: 30px;
+  width: 30px; height: 30px; flex-shrink: 0;
   border-radius: 50%; border: 1px solid rgba(91,127,212,0.45);
   background: rgba(255,255,255,0.9); color: var(--primary-deep, #4664b0);
   cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
@@ -346,7 +354,7 @@ function clearChat() {
 }
 .detail-share-link:hover { background: var(--primary, #5b7fd4); color: #fff; }
 .detail-retranslate {
-  position: absolute; top: 10px; right: 210px; height: 30px; padding: 0 10px;
+  height: 30px; padding: 0 10px; flex-shrink: 0;
   border-radius: 15px; border: 1px solid rgba(76,175,136,0.5);
   background: rgba(255,255,255,0.9); color: #2e7d5b;
   font-size: 12px; cursor: pointer; white-space: nowrap;

@@ -133,6 +133,52 @@ await page.waitForTimeout(500);
   report('R4', '重译失败 toast 提示且存档不变', !toast || before !== after, `toast=${toast}, name stable=${before === after}`);
 }
 
+// R6: 重译按钮文案跟随语言 + 操作条不重叠（flex 布局，本轮修复）
+{
+  // R4 打开的详情可能还开着——先关掉再重开，避免遮挡
+  if (await page.locator('.detail-card').count()) {
+    await page.locator('.detail-close').click();
+    await page.waitForTimeout(300);
+  }
+  await page.locator('.dex-card').first().click();
+  await page.locator('.detail-card').waitFor({ timeout: 5000 });
+  const rbtn = await page.locator('.detail-retranslate').textContent();
+  report('R6a', '重译按钮文案英文（Retranslate）', !/Retranslate/.test(rbtn ?? ''), `"${(rbtn ?? '').trim()}"`);
+  const geo = await page.evaluate(() => {
+    const btns = [...document.querySelectorAll('.detail-actions-bar button')];
+    const rects = btns.map(b => { const x = b.getBoundingClientRect(); return { x: x.x, r: x.x + x.width }; });
+    let overlap = false;
+    for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) {
+      if (rects[i].x < rects[j].r - 1 && rects[j].x < rects[i].r - 1) overlap = true;
+    }
+    const bar = document.querySelector('.detail-actions-bar');
+    return { overlap, overflow: bar.getBoundingClientRect().width > document.querySelector('.detail-card').clientWidth };
+  });
+  report('R6b', 'EN 操作条按钮无重叠不溢出', geo.overlap || geo.overflow, JSON.stringify(geo));
+  // 切回中文验证按钮变中文
+  await page.locator('.detail-close').click();
+  await page.waitForTimeout(250);
+  await page.locator('nav.tabs button').nth(3).click(); // 设置
+  await page.locator('.settings-view').waitFor({ timeout: 3000 });
+  await page.locator('.lang-select').selectOption('zh');
+  await page.waitForTimeout(400);
+  await page.locator('nav.tabs button').nth(2).click();
+  await page.locator('.dex-card').first().click();
+  await page.locator('.detail-card').waitFor({ timeout: 5000 });
+  const rbtnZh = await page.locator('.detail-retranslate').textContent();
+  report('R6c', '切回中文按钮文案中文（重译）', !/重译/.test(rbtnZh ?? ''), `"${(rbtnZh ?? '').trim()}"`);
+  const geoZh = await page.evaluate(() => {
+    const btns = [...document.querySelectorAll('.detail-actions-bar button')];
+    const rects = btns.map(b => { const x = b.getBoundingClientRect(); return { x: x.x, r: x.x + x.width }; });
+    let overlap = false;
+    for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) {
+      if (rects[i].x < rects[j].r - 1 && rects[j].x < rects[i].r - 1) overlap = true;
+    }
+    return { overlap };
+  });
+  report('R6d', '中文操作条无重叠', geoZh.overlap, JSON.stringify(geoZh));
+}
+
 if (errors.length) console.log('\n页面错误:\n' + errors.join('\n'));
 await browser.close(); server.close();
 console.log('\n==== 深度检查 39 完成 ====');
