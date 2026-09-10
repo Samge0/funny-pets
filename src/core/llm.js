@@ -145,6 +145,52 @@ export async function compressSoulMemory(cfg, pet, soul, oldSummary, transcript,
   return text.split('\n').map(s => s.replace(/^[-•\d.\s]+/, '').trim()).filter(s => s.length > 3).slice(0, 3);
 }
 
+// ---- 分享文案：LLM 生成社交平台风格推文 + 链接；失败降级本地模板 ----
+const SHARE_PROMPT = (pet, traitText, relation) => `你是一只宠物精灵「${pet.name}」的训练家朋友，帮它写一条社交平台分享文案，晒出这只精灵邀请好友来查看和挑战。
+
+精灵信息：
+- 属性：${(pet.types ?? []).join('/')} ｜ 等级：Lv.${pet.level}${pet.phase ? ` ｜ ${pet.phase}阶进化` : ''}
+- 性格：${traitText}
+- 图鉴：${pet.lore ?? '神秘精灵'}
+- 与训练家羁绊：${relation}
+
+要求：
+- 30-70 字，1-3 句，口语化、有感染力，适合发朋友圈/微博
+- 点到它的性格或外形亮点，带 1-2 个 emoji，结尾自然引导好友"点链接看看/来挑战"
+- 只输出文案本身，不要引号、不要标签符号行、不要出现"链接"两个字以外的 URL 字样`;
+
+export async function generateShareCopy(cfg, pet, traitText, relation = '亲密伙伴', signal) {
+  const res = await chatRequest(cfg, [
+    { role: 'system', content: '你是社交文案写手，只输出分享文案正文。' },
+    { role: 'user', content: SHARE_PROMPT(pet, traitText, relation) },
+  ], { temperature: 1.0, maxTokens: 160, signal });
+  const data = await res.json();
+  const text = String(data.choices?.[0]?.message?.content ?? '').trim()
+    .replace(/^[「"'【\[]+|[」"'\]】]+$/g, '') // 剥首尾引号/括号
+    .replace(/\s+/g, ' ')
+    .slice(0, 140);
+  if (!text) throw new Error('LLM 返回为空');
+  return text;
+}
+
+// 本地兜底文案（无 LLM 或失败时）：按性格模板拼装
+export function localShareCopy(pet, traitText, relation = '亲密伙伴') {
+  const t = (pet.types ?? []).join('/');
+  const openings = [
+    `我在《奇幻萌宠》抓到了一只${traitText}的${pet.name}！`,
+    `看看我家${pet.name}，${traitText}的小家伙！`,
+    `Lv.${pet.level} 的${pet.name}报到～属性${t}，${traitText}！`,
+  ];
+  const bodies = [
+    (pet.lore ?? '').slice(0, 40),
+    `${pet.phase ? `${pet.phase} 阶进化形态` : '还未进化'}，潜力十足`,
+    `跟它聊天还会回嘴，性格${traitText}`,
+  ];
+  const o = openings[Math.floor(Math.random() * openings.length)];
+  const b = bodies[Math.floor(Math.random() * bodies.length)];
+  return `${o} ${b} ✨ 点链接来观赏或向我发起挑战吧！`;
+}
+
 // ---- 本地兜底台词（无 LLM 或失败时；按性格四维选模板） ----
 const TAUNT_TEMPLATES = {
   big: ['看我的{move}！{defender}接招吧！', '这招{move}怎么样！', '{defender}，尝尝这个！'],

@@ -59,6 +59,9 @@ await owner.evaluate(() => {
 await shareBtn.click();
 await owner.waitForTimeout(600);
 sharedUrl = await owner.evaluate(() => window.__sharedUrl);
+// v2.1：分享按钮复制「AI 文案+链接」多行文本——查看者只需 URL 行
+const urlLine = (sharedUrl ?? '').split('\n').find(l => l.includes('#p='));
+if (urlLine) sharedUrl = urlLine.trim();
 out.urlGenerated = !!sharedUrl && sharedUrl.includes('#p=');
 out.urlLen = sharedUrl?.length ?? 0;
 await owner.close();

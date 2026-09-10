@@ -6,7 +6,13 @@
       <div class="detail-card">
         <button class="detail-close" @click="close">✕</button>
         <!-- 分享：生成 #p= 链接给好友观赏/挑战（查看者只读+可挑战，不能聊天） -->
-        <button class="detail-share" @click="share" title="生成分享链接">🔗 分享</button>
+        <button class="detail-share" @click="share" title="生成 AI 分享文案+链接（复制后可直接发社交平台）" :disabled="sharing">{{ sharing ? '✨ 生成中…' : '📣 分享' }}</button>
+        <button class="detail-share-link" @click="copyLink" title="仅复制分享链接">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+          </svg>
+        </button>
         <div class="detail-top">
           <div class="detail-sprite"><Pet3D :key="modelTag" :pet="pet" :size="140" /></div>
           <div class="detail-meta">
@@ -77,7 +83,7 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
 import { llmConfig, showToast, rarityInfo } from '../store.js';
-import { isLlmConfigured, chatWithSoul } from '../core/llm.js';
+import { isLlmConfigured, chatWithSoul, generateShareCopy, localShareCopy } from '../core/llm.js';
 import { shareUrl } from '../core/sharePet.js';
 import { chatOf, appendChat, maybeCompress, persistChat } from '../chat.js';
 import { statsAt } from '../core/evolve.js';
@@ -121,20 +127,53 @@ function ensure(p) {
 function chipStyle(t) { return { background: TYPE_COLORS[t] ?? '#9fa19f' }; }
 function close() { emit('close'); }
 
-// 分享：#p= 链接（纯前端，无后端）。查看者只读观赏 + 可挑战，聊天天然不可用
-// v2：链接为压缩编码（异步 deflate），不再暴露明文 JSON
-async function share() {
-  const url = await shareUrl(props.pet);
-  const done = () => showToast('分享链接已复制！好友打开即可观赏或挑战', 3200);
+// ---- 分享双按钮：📣 分享 = LLM 生成社交文案+链接；🔗图标 = 仅复制链接 ----
+const sharing = ref(false);
+// 通用剪贴板写入（含 execCommand 兜底）
+function writeClipboard(text, done) {
   if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(url).then(done).catch(() => {
-      const ta = document.createElement('textarea');
-      ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
-      document.body.appendChild(ta); ta.select();
-      try { document.execCommand('copy'); done(); } catch { showToast('复制失败，请手动复制地址栏', 2600); }
-      ta.remove();
-    });
-  } else showToast('复制失败，请手动复制地址栏', 2600);
+    navigator.clipboard.writeText(text).then(done).catch(() => legacyCopy(text, done));
+  } else legacyCopy(text, done);
+}
+function legacyCopy(text, done) {
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); done(); } catch { showToast('复制失败，请手动复制地址栏', 2600); }
+  ta.remove();
+}
+// 图标按钮：仅复制链接
+async function copyLink() {
+  if (!props.pet) return;
+  const url = await shareUrl(props.pet);
+  writeClipboard(url, () => showToast('分享链接已复制！好友打开即可观赏或挑战', 3200));
+}
+// 分享按钮：LLM 生成社交文案（无 LLM/失败降级本地模板），文案+空行+链接一次复制
+async function share() {
+  if (!props.pet || sharing.value) return;
+  sharing.value = true;
+  try {
+    const url = await shareUrl(props.pet);
+    // traitLabels 返回四维对象——拼成一句人话给 LLM/模板用
+    const tt = traitText.value;
+    const traits = tt ? `${tt.warmth}、${tt.energy}、${tt.pride}、${tt.curiosity}` : '活泼可爱';
+    const soulCur = soul.value;
+    const relation = soulCur ? `好感 ${Math.round(soulCur.relation.affinity)}/100（${soulCur.relation.title}）` : '亲密伙伴';
+    let copy = '';
+    try {
+      // 12s 超时：慢接口不让用户干等
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12000);
+      copy = await generateShareCopy(llmConfig, props.pet, traits, relation, ctrl.signal).finally(() => clearTimeout(timer));
+    } catch (err) {
+      console.warn('LLM 分享文案失败，降级本地模板', err);
+      copy = localShareCopy(props.pet, traits, relation);
+      if (llmReady.value) showToast('AI 文案生成失败，已用模板文案', 2600);
+    }
+    writeClipboard(`${copy}\n${url}`, () => showToast('分享文案+链接已复制，去社交平台粘贴吧！', 3200));
+  } finally {
+    sharing.value = false;
+  }
 }
 function fmtTime(t) {
   const d = new Date(t);
@@ -221,12 +260,22 @@ function clearChat() {
   font-size: 14px; cursor: pointer;
 }
 .detail-share {
-  position: absolute; top: 10px; right: 48px; height: 30px; padding: 0 12px;
+  position: absolute; top: 10px; right: 82px; height: 30px; padding: 0 12px;
   border-radius: 15px; border: 1px solid rgba(91,127,212,0.45);
   background: rgba(255,255,255,0.9); color: var(--primary-deep, #4664b0);
   font-size: 12.5px; cursor: pointer; white-space: nowrap;
 }
-.detail-share:hover { background: var(--primary, #5b7fd4); color: #fff; }
+.detail-share:disabled { opacity: 0.65; cursor: wait; }
+.detail-share:hover:not(:disabled) { background: var(--primary, #5b7fd4); color: #fff; }
+/* 链接图标按钮：紧贴分享按钮右侧、挨着关闭钮 */
+.detail-share-link {
+  position: absolute; top: 10px; right: 48px; width: 30px; height: 30px;
+  border-radius: 50%; border: 1px solid rgba(91,127,212,0.45);
+  background: rgba(255,255,255,0.9); color: var(--primary-deep, #4664b0);
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  padding: 0;
+}
+.detail-share-link:hover { background: var(--primary, #5b7fd4); color: #fff; }
 .detail-top { display: flex; gap: 16px; }
 .detail-sprite { flex-shrink: 0; }
 .detail-meta { flex: 1; min-width: 0; }
