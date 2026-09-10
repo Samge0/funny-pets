@@ -112,7 +112,20 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .actions .danger { background: var(--danger); color: #fff; border: none; }
 
 /* ---- 战斗 ---- */
-.battle-view { user-select: none; }
+.battle-view {
+  user-select: none;
+  /* 战斗页内部滚动：竞技场（对战视图）固定在视口内不随页面滚走，
+     技能按钮多时只在下方操作区+战报里滚动（根因：整页滚动会把 arena 顶出视口外） */
+  display: flex; flex-direction: column;
+  height: calc(100dvh - 142px); /* 视口 - 顶栏(52+16) - shell 上下 padding(14+60) */
+  min-height: 460px;           /* 极矮视口（横屏手机）下不无限压缩 */
+  overflow: hidden;
+}
+.battle-scroll {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column;
+  overflow-y: auto; overscroll-behavior: contain; /* 滚到边界不带动整页 */
+}
 .battle-view.shake { animation: screen-shake 0.35s ease; }
 @keyframes screen-shake {
   0%, 100% { transform: translate(0, 0); }
@@ -327,6 +340,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   .topbar { flex-direction: column; gap: 8px; }
   .tabs { width: 100%; justify-content: space-between; }
   /* 战斗：左右布局（移动端也保持左右对峙，不再上下堆叠拉长页面） */
+  .battle-view { height: calc(100dvh - 184px); min-height: 420px; } /* 移动端顶栏两行(94+16)+shell padding(74) */
   .battle-arena { flex-direction: row; align-items: stretch; gap: 6px; min-height: 0; padding: 14px 8px 40px; }
   .fighter { min-width: 0; flex: 1; gap: 6px; }
   .fighter.wild { align-self: flex-start; }

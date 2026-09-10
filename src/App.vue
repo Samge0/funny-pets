@@ -827,6 +827,8 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
           </Transition>
         </div>
 
+        <!-- 竞技场固定（不随滚动出视口）；操作区/换宠面板/战报在内部滚动区里 -->
+        <div class="battle-scroll">
         <!-- 操作区（优先级最高，不被战报推挤） -->
         <!-- 强制换宠 -->
         <div v-if="battle.ended === 'switch'" class="battle-actions force-switch">
@@ -868,6 +870,7 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
         <div class="battle-log" ref="logEl">
           <p v-for="(e, i) in battleLog.slice(-12)" :key="i" :class="{ hl: e.type === 'faint' || (e.type === 'ball' && e.caught) }">{{ e.text }}</p>
         </div>
+        </div><!-- /battle-scroll -->
       </section>
 
       <!-- ============ 图鉴 ============ -->
