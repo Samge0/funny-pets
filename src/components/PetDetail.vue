@@ -31,7 +31,7 @@
               <span class="bond-num">{{ Math.round(soul.relation.affinity) }}</span>
             </div>
             <div class="detail-stats">
-              <span>HP {{ maxHp }}</span><span>攻 {{ atkStat }}</span><span>防 {{ defStat }}</span><span>速 {{ spdStat }}</span>
+              <span>HP {{ maxHp }}</span><span>{{ t('攻') }} {{ atkStat }}</span><span>{{ t('防') }} {{ defStat }}</span><span>{{ t('速') }} {{ spdStat }}</span>
             </div>
           </div>
         </div>

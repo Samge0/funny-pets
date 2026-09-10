@@ -211,6 +211,7 @@ const EN = {
   '导入失败：{err}': 'Import failed: {err}',
   '确定清空全部存档吗？此操作不可撤销！': 'Wipe ALL save data? This cannot be undone!',
   '📎 关于': '📎 About',
+  'GitHub 仓库': 'GitHub Repo',
   '奇幻萌宠 FunPets 是纯前端开源休闲游戏，喜欢的话去仓库点个 ⭐ 吧～': 'FunPets is an open-source pure-frontend casual game. Star the repo if you like it~',
   'LLM 生成失败，本次使用本地随机': 'LLM generation failed — using local random this time',
   // storage errors
@@ -366,6 +367,7 @@ const JA = {
   '导出存档': 'エクスポート', '导入存档': 'インポート', '清空存档': '全消去',
   '导入成功': 'インポート完了',
   '📎 关于': '📎 このゲームについて',
+  'GitHub 仓库': 'GitHub リポジトリ',
   '太棒了！': 'すごい！',
   '发送': '送信', '清空记录': '消去', '取消': 'キャンセル', '跳过': 'スキップ',
   '🎁 赠送': '🎁 贈る', '📣 分享': '📣 シェア', '✨ 生成中…': '✨ 生成中…', '🎁 生成中…': '🎁 生成中…',
@@ -438,6 +440,7 @@ const ZH_TW = {
   '导出存档': '匯出存檔', '导入存档': '匯入存檔', '清空存档': '清空存檔',
   '导入成功': '匯入成功',
   '📎 关于': '📎 關於',
+  'GitHub 仓库': 'GitHub 儲存庫',
   '太棒了！': '太棒了！',
   '发送': '發送', '清空记录': '清空記錄', '跳过': '跳過',
   '🎁 赠送': '🎁 贈送', '📣 分享': '📣 分享', '✨ 生成中…': '✨ 生成中…', '🎁 生成中…': '🎁 生成中…',

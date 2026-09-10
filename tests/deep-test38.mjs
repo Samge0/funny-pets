@@ -205,6 +205,59 @@ await page.evaluate(() => localStorage.setItem('funny-pets-lang-v1', 'zh'));
   report('I9c', '中文下描述恢复中文', !/青草丘/.test(zhDesc), `"${zhDesc.slice(0, 30)}"`);
 }
 
+// ============ I10: 英文模式下内容层多语言（本轮修复）============
+{
+  // 切英文、清档，新遇一只精灵（本地随机路径——无 LLM）
+  await page.getByRole('button', { name: /设置|設定|Settings/ }).click();
+  await page.locator('.settings-view').waitFor({ timeout: 3000 });
+  await page.locator('.lang-select').selectOption('en');
+  await page.waitForTimeout(300);
+  await page.evaluate(() => localStorage.removeItem('funny-pets-save-v1'));
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.locator('.map-card').nth(0).click();
+  await page.locator('.wild-card').waitFor({ timeout: 8000 });
+  const wildName = ((await page.locator('.wild-card h2').textContent()) ?? '').trim();
+  report('I10a', '英文模式本地随机精灵名是拉丁字母', /[ç\u4e00-\u9fff\u3040-\u30ff]/.test(wildName), `"${wildName}"`);
+  const loreTxt = ((await page.locator('.wild-card .lore').textContent()) ?? '').trim();
+  report('I10b', '英文模式图鉴简介是英文', /[\u4e00-\u9fff]/.test(loreTxt), `"${loreTxt.slice(0, 40)}"`);
+  // 类型 chip
+  const chips = await page.evaluate(() => [...document.querySelectorAll('.wild-card .chip:not(.rarity-chip)')].map(c => c.textContent.trim()));
+  report('I10c', '相遇页类型 chip 英文', chips.some(c => /[\u4e00-\u9fff]/.test(c)), JSON.stringify(chips));
+  // 捕捉后图鉴：名称/类型（按钮文案是 "Ball 42%" 形态）
+  for (let i = 0; i < 6; i++) {
+    const ballBtn = page.locator('.encounter-view .actions .primary.ball');
+    if (await ballBtn.count()) await ballBtn.click();
+    else await page.getByRole('button', { name: /Ball|丢球/ }).click();
+    await page.waitForTimeout(400);
+    if (!(await page.locator('.encounter-view').count())) break;
+  }
+  if (await page.locator('.cele-btn').count()) { await page.locator('.cele-btn').dispatchEvent('click'); await page.waitForTimeout(400); }
+  const caught = !(await page.locator('.encounter-view').count());
+  if (caught) {
+    await page.locator('nav.tabs button').nth(2).click(); // 图鉴（按结构索引，语言无关）
+    await page.waitForTimeout(500);
+    const dexName = ((await page.locator('.dex-card strong').first().textContent()) ?? '').trim();
+    report('I10d', '图鉴卡精灵名非中文', /[\u4e00-\u9fff]/.test(dexName.replace(/Lv\.\d+/, '')), `"${dexName}"`);
+    const dexChips = await page.evaluate(() => [...document.querySelectorAll('.dex-card .chip:not(.rarity-chip)')].slice(0, 3).map(c => c.textContent.trim()));
+    report('I10e', '图鉴卡类型 chip 英文', dexChips.some(c => /[\u4e00-\u9fff]/.test(c)), JSON.stringify(dexChips));
+  } else {
+    report('I10d', '图鉴卡精灵名非中文（未捕到，跳过）', false, 'not caught this run');
+    report('I10e', '图鉴卡类型 chip 英文（未捕到，跳过）', false, 'not caught this run');
+  }
+  // GitHub Repo + 详情页攻防速
+  await page.getByRole('button', { name: /Settings|设置|設定/ }).click();
+  await page.locator('.settings-view').waitFor({ timeout: 3000 });
+  const gh = await page.locator('.gh-text').textContent();
+  report('I10f', '设置页 GitHub Repo 英文', !/Repo/.test(gh ?? ''), `"${(gh ?? '').trim()}"`);
+  if (caught) {
+    await page.locator('nav.tabs button').nth(2).click();
+    await page.locator('.dex-card').first().click();
+    await page.locator('.detail-card').waitFor({ timeout: 5000 });
+    const stats = await page.locator('.detail-stats').textContent();
+    report('I10g', '详情页 Atk/Def/Spd 英文', !/Atk/.test(stats ?? ''), `"${(stats ?? '').trim()}"`);
+  }
+}
+
 if (errors.length) console.log('\n页面错误:\n' + errors.join('\n'));
 await browser.close(); server.close();
 console.log('\n==== 深度检查 38 完成 ====');
