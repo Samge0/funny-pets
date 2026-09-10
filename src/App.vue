@@ -48,6 +48,26 @@ const sharedPet = ref(null);   // 分享来的宠物（解码后）
     view.value = 'shared';
   }
 })();
+// 同 tab 换分享链接：浏览器对纯 #hash 变化不重载页面（只派发 hashchange），
+// 必须自己监听重解析——否则地址栏换新链接回车后画面不变，得手动点刷新。
+// 三分支：新链接→换宠重进观赏页；hash 被清（exitShared/手改 URL）→退回地图；
+// 链接非法→toast 提示并留在原视图（防误触把玩家踢出当前流程）。
+let lastSharedRaw = null; // 去重：initShared 已处理的初始 hash
+window.addEventListener('hashchange', async () => {
+  const shared = await readSharedFromHash();
+  if (shared) {
+    if (shared.raw === lastSharedRaw && sharedPet.value) return; // 同一条链接重复触发
+    lastSharedRaw = shared.raw;
+    sharedPet.value = shared.pet;
+    view.value = 'shared';
+  } else if (sharedPet.value && !location.hash.match(/^#p=/)) {
+    // 之前在看分享宠，现在 hash 没了 → 退出观赏模式回地图
+    sharedPet.value = null;
+    if (view.value === 'shared') view.value = 'map';
+  } else if (location.hash.match(/^#p=/)) {
+    showToast('分享链接无效或已损坏', 2600);
+  }
+});
 // 挑战分享宠：查看者用自己的出战宠 vs 分享宠（复用战斗引擎；
 // 分享宠 as wild——挑战结果只影响查看者本地经验，不写分享者存档天然成立）
 function challengeShared() {
