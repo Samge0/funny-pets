@@ -5,6 +5,8 @@
     <div v-if="pet" class="detail-mask" @click.self="close">
       <div class="detail-card">
         <button class="detail-close" @click="close">✕</button>
+        <!-- 赠送：生成 #g= 链接，好友打开领取一只克隆（自己不失去宠物） -->
+        <button class="detail-gift" @click="gift" title="生成赠送链接——好友打开后可领取一只它的克隆（你不会失去它）">{{ gifting ? '🎁 生成中…' : '🎁 赠送' }}</button>
         <!-- 分享：生成 #p= 链接给好友观赏/挑战（查看者只读+可挑战，不能聊天） -->
         <button class="detail-share" @click="share" title="生成 AI 分享文案+链接（复制后可直接发社交平台）" :disabled="sharing">{{ sharing ? '✨ 生成中…' : '📣 分享' }}</button>
         <button class="detail-share-link" @click="copyLink" title="仅复制分享链接">
@@ -84,7 +86,7 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import { llmConfig, showToast, rarityInfo } from '../store.js';
 import { isLlmConfigured, chatWithSoul, generateShareCopy, localShareCopy } from '../core/llm.js';
-import { shareUrl } from '../core/sharePet.js';
+import { shareUrl, giftUrl } from '../core/sharePet.js';
 import { chatOf, appendChat, maybeCompress, persistChat } from '../chat.js';
 import { statsAt } from '../core/evolve.js';
 import { ensureSoul, traitLabels, updateSoul, driftTraits, addProfileFact, touchRelation } from '../core/soul.js';
@@ -147,6 +149,20 @@ async function copyLink() {
   if (!props.pet) return;
   const url = await shareUrl(props.pet);
   writeClipboard(url, () => showToast('分享链接已复制！好友打开即可观赏或挑战', 3200));
+}
+// ---- 赠送：#g= 链接（好友领取克隆；自己不失去宠物；不携带任何 LLM 配置）----
+const gifting = ref(false);
+async function gift() {
+  if (!props.pet || gifting.value) return;
+  gifting.value = true;
+  try {
+    const url = await giftUrl(props.pet);
+    const line1 = `我把「${props.pet.name}」赠送给你啦！纯前端小礼物🎁`;
+    const line2 = '打开链接领取一只它的克隆（我的原宠还在我身边，放心）——它的灵魂档案和 AI 聊天会用你自己的配置重新开始。';
+    writeClipboard(`${line1}\n${line2}\n${url}`, () => showToast('赠送链接已复制！发给好友即可领取（你不会失去它）', 3600));
+  } finally {
+    gifting.value = false;
+  }
 }
 // 分享按钮：LLM 生成社交文案（无 LLM/失败降级本地模板），文案+空行+链接一次复制
 async function share() {
@@ -263,6 +279,14 @@ function clearChat() {
   border-radius: 50%; border: none; background: rgba(120,130,160,0.14);
   font-size: 14px; cursor: pointer;
 }
+.detail-gift {
+  position: absolute; top: 10px; right: 158px; height: 30px; padding: 0 12px;
+  border-radius: 15px; border: 1px solid rgba(232,134,44,0.5);
+  background: rgba(255,255,255,0.9); color: #d85a20;
+  font-size: 12.5px; cursor: pointer; white-space: nowrap;
+}
+.detail-gift:disabled { opacity: 0.65; cursor: wait; }
+.detail-gift:hover:not(:disabled) { background: linear-gradient(120deg, #e8862c, #d85a20); color: #fff; }
 .detail-share {
   position: absolute; top: 10px; right: 82px; height: 30px; padding: 0 12px;
   border-radius: 15px; border: 1px solid rgba(91,127,212,0.45);

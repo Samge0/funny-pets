@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue';
-import { save, showToast, spawnWild, adoptPet, party, withStats, gainExp, persist, rarityInfo, mapInfo, isMapUnlocked, mapLevelRange, llmConfig, saveLlmConfig, petByUid, celebration, closeCelebration, celebrate, waitCelebrationClosed, requestDevourChoice } from './store.js';
+import { save, showToast, spawnWild, adoptPet, adoptGiftPet, isGiftClaimed, party, withStats, gainExp, persist, rarityInfo, mapInfo, isMapUnlocked, mapLevelRange, llmConfig, saveLlmConfig, petByUid, celebration, closeCelebration, celebrate, waitCelebrationClosed, requestDevourChoice } from './store.js';
 import { MAPS } from './data/maps.js';
 import { petSvg } from './core/sprites.js';
 import { isLlmConfigured, generatePetWithLlm, tauntWithSoul, localTaunt } from './core/llm.js';
@@ -18,7 +18,7 @@ import Celebration from './components/Celebration.vue';
 import PetDetail from './components/PetDetail.vue';
 import DevourChoice from './components/DevourChoice.vue';
 import GlobalToast from './components/GlobalToast.vue';
-import { readSharedFromHash } from './core/sharePet.js';
+import { readSharedFromHash, readGiftFromHash } from './core/sharePet.js';
 
 const view = ref('map'); // map | encounter | battle | dex | settings | shared
 const spawning = ref(false);
@@ -48,19 +48,28 @@ const BALLS_MAX = 5;
 
 // ---- 分享观赏模式（#p=...）：只读 3D 展示 + 可挑战；禁聊天 ----
 const sharedPet = ref(null);   // 分享来的宠物（解码后）
+// ---- 赠送领取模式（#g=...）：3D 展示 + 领取克隆入档 ----
+const giftPet = ref(null);     // 赠送来的宠物（解码后）
 // v2 分享链接是压缩编码（异步 inflate）：挂载前解析，防止短暂闪地图视图
 (async function initShared() {
   const shared = await readSharedFromHash();
   if (shared) {
     sharedPet.value = shared.pet;
     view.value = 'shared';
+    return;
+  }
+  const gift = await readGiftFromHash();
+  if (gift) {
+    giftPet.value = gift.pet;
+    view.value = 'gift';
   }
 })();
-// 同 tab 换分享链接：浏览器对纯 #hash 变化不重载页面（只派发 hashchange），
+// 同 tab 换分享/赠送链接：浏览器对纯 #hash 变化不重载页面（只派发 hashchange），
 // 必须自己监听重解析——否则地址栏换新链接回车后画面不变，得手动点刷新。
-// 三分支：新链接→换宠重进观赏页；hash 被清（exitShared/手改 URL）→退回地图；
+// 分支：新链接→换宠重进对应页；hash 被清（exit/手改 URL）→退回地图；
 // 链接非法→toast 提示并留在原视图（防误触把玩家踢出当前流程）。
 let lastSharedRaw = null; // 去重：initShared 已处理的初始 hash
+let lastGiftRaw = null;
 window.addEventListener('hashchange', async () => {
   const shared = await readSharedFromHash();
   if (shared) {
@@ -68,12 +77,25 @@ window.addEventListener('hashchange', async () => {
     lastSharedRaw = shared.raw;
     sharedPet.value = shared.pet;
     view.value = 'shared';
-  } else if (sharedPet.value && !location.hash.match(/^#p=/)) {
+    return;
+  }
+  const gift = await readGiftFromHash();
+  if (gift) {
+    if (gift.raw === lastGiftRaw && giftPet.value) return;
+    lastGiftRaw = gift.raw;
+    giftPet.value = gift.pet;
+    view.value = 'gift';
+    return;
+  }
+  if (sharedPet.value && !location.hash.match(/^#p=/)) {
     // 之前在看分享宠，现在 hash 没了 → 退出观赏模式回地图
     sharedPet.value = null;
     if (view.value === 'shared') view.value = 'map';
-  } else if (location.hash.match(/^#p=/)) {
-    showToast('分享链接无效或已损坏', 2600);
+  } else if (giftPet.value && !location.hash.match(/^#g=/)) {
+    giftPet.value = null;
+    if (view.value === 'gift') view.value = 'map';
+  } else if (location.hash.match(/^#[pg]=/)) {
+    showToast('链接无效或已损坏', 2600);
   }
 });
 // 挑战分享宠：查看者用自己的出战宠 vs 分享宠（复用战斗引擎；
@@ -183,6 +205,34 @@ async function encounter(mapId) {
 function exitShared() {
   sharedPet.value = null;
   history.replaceState(null, '', location.pathname + location.search); // 清掉 #p= 防刷新再进
+  view.value = 'map';
+}
+
+// ---- 赠送领取（#g=）----
+// 领取 = 克隆入档（发宠方不丢宠物）；adoptGiftPet 内部按指纹去重防重复领取。
+// 领取后给捕捉同款庆祝（嗨点一致），庆祝弹窗关闭时 giftPet 还在（hash 未清），
+// 视图切回 gift 页显示「已领取」状态——玩家可关页或点返回继续游戏。
+function claimGift() {
+  if (!giftPet.value) return;
+  if (isGiftClaimed(giftPet.value)) {
+    showToast('你已经领取过这只精灵啦', 2600);
+    return;
+  }
+  const adopted = adoptGiftPet(giftPet.value);
+  if (!adopted) { // 引擎级去重兜底（UI 置灰外的第二道闸）
+    showToast('你已经领取过这只精灵啦', 2600);
+    return;
+  }
+  // 新灵魂在领取人本地诞生（LLM 配置用领取人自己的——赠送链接从不携带任何 LLM 信息）
+  const soul = ensureSoul(adopted);
+  addEpisodic(soul, `来自好友的赠送，${adopted.name} 加入了队伍。这份缘分会在这里继续生长。`);
+  celebrate('catch', adopted, '来自好友的赠送，加入你的队伍！');
+  persist();
+}
+
+function exitGift() {
+  giftPet.value = null;
+  history.replaceState(null, '', location.pathname + location.search); // 清掉 #g= 防刷新再进
   view.value = 'map';
 }
 
@@ -770,6 +820,27 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
           <div class="actions">
             <button class="primary" @click="challengeShared">⚔️ 用我的精灵挑战</button>
             <button class="ghost" @click="exitShared">返回游戏</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 赠送领取（#g= 链接）：3D 展示 + 领取克隆 ============ -->
+      <section v-else-if="view === 'gift' && giftPet" class="encounter-view gift-view">
+        <div class="wild-card" :style="{ '--rarity': rarityInfo(giftPet.rarity).color }">
+          <div class="wild-sprite3d">
+            <Pet3D :pet="giftPet" :size="200" drag-mode="free" />
+          </div>
+          <h2>{{ giftPet.name }} <small class="lv">Lv.{{ giftPet.level }}</small></h2>
+          <p class="shared-owner-hint">🎁 好友赠送的精灵 · 点击它会跳一下</p>
+          <div class="chips">
+            <i v-for="t in giftPet.types" :key="t" class="chip" :style="typeChipStyle(t)">{{ t }}</i>
+            <i class="chip rarity-chip" :style="{ background: rarityInfo(giftPet.rarity).color }">{{ rarityInfo(giftPet.rarity).name }}</i>
+          </div>
+          <p class="lore">{{ giftPet.lore }}</p>
+          <div class="actions">
+            <button v-if="!isGiftClaimed(giftPet)" class="primary gift-claim" @click="claimGift">🎁 领取它！</button>
+            <button v-else class="ghost" disabled>✅ 已领取</button>
+            <button class="ghost" @click="exitGift">返回游戏</button>
           </div>
         </div>
       </section>

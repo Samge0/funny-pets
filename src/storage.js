@@ -11,6 +11,7 @@ export function emptySave() {
     nextUid: 1,
     dexSeen: {},
     partyIds: [],
+    giftClaimed: [], // 已领取的赠送指纹（同一赠送只能领一次）
     counters: { encounters: 0, caught: 0, battlesWon: 0, evolutions: 0 },
   };
 }
@@ -24,6 +25,10 @@ export function validateSave(value) {
   if (value.partyIds.length > 4) throw new Error('上阵数量超限');
   if (typeof value.dexSeen !== 'object' || value.dexSeen === null) throw new Error('dexSeen 无效');
   if (typeof value.counters !== 'object' || value.counters === null) throw new Error('counters 无效');
+  // giftClaimed：宽松校验（字符串数组，缺失=老存档自动补空）
+  if (value.giftClaimed === undefined) value.giftClaimed = [];
+  if (!Array.isArray(value.giftClaimed)) throw new Error('giftClaimed 无效');
+  value.giftClaimed = value.giftClaimed.filter(x => typeof x === 'string').slice(0, 200);
   const uids = new Set();
   for (const p of value.pets) {
     if (!p || !Number.isSafeInteger(p.uid) || !Number.isSafeInteger(p.seed) || !Array.isArray(p.types)

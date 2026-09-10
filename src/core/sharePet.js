@@ -240,9 +240,26 @@ export async function shareUrl(pet) {
   return u.toString();
 }
 
-// 启动时解析（main.js 或 App 挂载时调用一次；异步版）
+// ---- 赠送链接（#g=）：与分享同载荷同校验，仅意图不同 ----
+// 纯前端无后端：赠送=好友打开链接「领取」一只克隆（发宠方不失去宠物）。
+// 领取侧 decode 走同一套 validatePet 白名单——#g= 与 #p= 一样是不可信输入面。
+export async function giftUrl(pet) {
+  const u = new URL(location.href);
+  u.hash = 'g=' + await encodeShareParam(pet);
+  return u.toString();
+}
+
+// 启动时解析分享/赠送链接（main.js 或 App 挂载时调用一次；异步版）
 export async function readSharedFromHash() {
   const m = location.hash.match(/^#p=(.+)$/);
+  if (!m) return null;
+  const pet = await decodeSharePetAsync(m[1]);
+  return pet ? { pet, raw: m[1] } : null;
+}
+
+// 赠送链接解析：返回 { pet, raw } 或 null（坏载荷走"链接无效"路径）
+export async function readGiftFromHash() {
+  const m = location.hash.match(/^#g=(.+)$/);
   if (!m) return null;
   const pet = await decodeSharePetAsync(m[1]);
   return pet ? { pet, raw: m[1] } : null;

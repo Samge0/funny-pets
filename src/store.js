@@ -149,6 +149,37 @@ export function petByUid(uid) {
   return save.pets.find(p => p.uid === uid) ?? null;
 }
 
+// ---- 赠送领取（纯前端克隆）----
+// 别人打开 #g= 链接领取：克隆一份宠物配置入档。发宠方完全不丢宠物（无后端事实）。
+// 去重：按「克隆源指纹」（seed+外观+技能名）记入 save.giftClaimed，同一赠送链接
+// 只能领一次——防手抖双击/反复刷新刷克隆。指纹而非 raw 链接：同一只宠的两条
+// 不同编码链接（v1/v2）也视为同一只。
+export function giftFingerprint(pet) {
+  const look = pet.look ?? {};
+  return [pet.seed, pet.name, pet.phase ?? 0, look.body, look.ears, look.tail, look.pattern, look.accessory, look.palette, look.eyes,
+    ...(pet.extraParts ?? []).map(e => `${e.part}=${e.value}`),
+    ...(pet.moves ?? []).map(m => m.name)].join('|');
+}
+
+export function isGiftClaimed(pet) {
+  const fp = giftFingerprint(pet);
+  const set = save.giftClaimed;
+  return Array.isArray(set) ? set.includes(fp) : false;
+}
+
+export function adoptGiftPet(pet) {
+  if (isGiftClaimed(pet)) return null; // 引擎级兜底：已领过拒绝（UI 层按钮已置灰）
+  // 领取的克隆走捕捉入档同一路径：分配本地新 uid、剥离战斗残留、计入 caught、
+  // 自动入队+置顶。捕捉路径已防御 nextUid 落后（手改存档）。
+  const adopted = adoptPet(pet);
+  // 去重标记必须在入档后写（adoptPet 内部 persist；这里补一笔）
+  if (!Array.isArray(save.giftClaimed)) save.giftClaimed = [];
+  save.giftClaimed.push(giftFingerprint(pet));
+  if (save.giftClaimed.length > 200) save.giftClaimed.shift(); // 上限：防无限膨胀
+  persist();
+  return adopted;
+}
+
 export const party = computed(() =>
   // 出战顺序 = 图鉴排序顺序：按 save.pets 的先后过滤 partyIds
   // （图鉴里调整排序/置顶后，战斗首发与换宠顺序同步变化）
