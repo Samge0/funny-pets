@@ -162,18 +162,25 @@ function init() {
     applyAct(now);
 
     pet3d.update(t);
+    // 轻点跳跃：0.5s 内 sin 包络弹起（幅 0.32，比 idle 浮动高 5 倍，肉眼明显）
+    const hopAge = now - hopAt;
+    const tapHop = hopAge < 500 ? Math.sin(hopAge / 500 * Math.PI) * 0.32 : 0;
     const hop = act?.kind === 'dance' ? Math.abs(Math.sin((now - act.start) / act.dur * Math.PI * 8)) * 0.12 : 0;
-    pet3d.group.position.y = baseY + hop + Math.sin(t * 1.8) * 0.06;
+    pet3d.group.position.y = baseY + hop + tapHop + Math.sin(t * 1.8) * 0.06;
     effect.render(scene, camera);
   };
   loop();
 }
 
-// ---- 指针交互：水平拖=转身，垂直拖=俯仰（±0.5rad）----
+// ---- 指针交互：水平拖=转身，垂直拖=俯仰（±0.5rad）；轻点=跳一下 ----
+// tap 判定：位移 <6px 且按下到松开 <400ms（拖拽/滑动不算点击）
+let downX = 0, downY = 0, downT = 0;
+let hopAt = -1e9;
 function onPointerDown(e) {
   dragging = true;
   grabbing.value = true;
   lastX = e.clientX; lastY = e.clientY;
+  downX = e.clientX; downY = e.clientY; downT = performance.now();
   spinVel = 0;
   try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* ignore */ }
   e.preventDefault();
@@ -187,13 +194,23 @@ function onPointerMove(e) {
   if (props.dragMode !== 'panY') {
     // free 模式：垂直拖=俯仰（±0.5rad）
     pivot.rotation.x = THREE.MathUtils.clamp(pivot.rotation.x + dy * 0.008, -0.5, 0.5);
+    // 观测点（E2E 用）：垂直拖拽生效的 DOM 证据
+    if (mount.value) mount.value.dataset.pitch = pivot.rotation.x.toFixed(3);
   }
   spinVel = dx * 0.004;
 }
-function onPointerUp() {
+function onPointerUp(e) {
+  if (!dragging) return; // pointerup 后 pointerleave 会再触发一次，防重复
   dragging = false;
   grabbing.value = false;
   resumeAt = performance.now() + 1400;
+  // 轻点 → 跳一下（松手时几乎没位移且够快）
+  const dist = Math.hypot((e.clientX ?? downX) - downX, (e.clientY ?? downY) - downY);
+  if (dist < 6 && performance.now() - downT < 400) {
+    hopAt = performance.now();
+    // 观测点（E2E 用）：hop 触发计数
+    if (mount.value) mount.value.dataset.hops = String(1 + Number(mount.value.dataset.hops ?? 0));
+  }
 }
 
 function dispose() {

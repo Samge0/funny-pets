@@ -728,7 +728,7 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
       <section v-else-if="view === 'shared' && sharedPet" class="encounter-view shared-view">
         <div class="wild-card">
           <div class="wild-sprite3d">
-            <Pet3D :pet="sharedPet" :size="200" drag-mode="panY" />
+            <Pet3D :pet="sharedPet" :size="200" drag-mode="free" />
           </div>
           <h2>{{ sharedPet.name }} <small class="lv">Lv.{{ sharedPet.level }}</small></h2>
           <p class="shared-owner-hint">🐾 来自好友分享的精灵 · 点击它会跳一下</p>
