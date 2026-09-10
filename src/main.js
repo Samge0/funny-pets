@@ -2,6 +2,8 @@ import { createApp } from 'vue';
 import App from './App.vue';
 import './styles/base.css';
 import { applyDevour, evolvePet } from './core/evolve.js';
+import { newBattleState, battleTurn } from './core/battle.js';
+import { statsAt } from './core/evolve.js';
 
 const app = createApp(App);
 app.config.errorHandler = (error) => {
@@ -12,8 +14,11 @@ app.config.errorHandler = (error) => {
 };
 app.mount('#app');
 
-// E2E 测试钩子：暴露纯引擎函数（无状态、生产无副作用；deep-test 系列调用）
+// E2E 测试钩子：暴露纯引擎函数（无状态、生产无副作用；deep-test 系列调用）。
+// deep-test35 起另暴露战斗引擎（免疫伤害回归）。
 if (typeof window !== 'undefined') {
   window.__engines = { applyDevour, evolvePet };
+  window.__battleTurn = battleTurn;
+  window.__newBattle = newBattleState;
+  window.__statsAt = statsAt;
 }
-

@@ -15,6 +15,9 @@ let working = false;
 function renderOnce(pet, size, resolve) {
   const scene = new THREE.Scene();
   const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
+  // 自适应取景（与 Pet3D.vue 同一策略）：按包围盒调相机，高个宠物（bipedal/
+  // phase2 王冠）在图鉴缩略图里不再被裁头。此前固定 (0,1.05,5.4) 只装得下
+  // y∈[-1.42,1.52]，bipedal phase2 到 y≈2.53。
   cam.position.set(0, 1.05, 5.4);
   cam.lookAt(0, 0.05, 0);
 
@@ -26,6 +29,18 @@ function renderOnce(pet, size, resolve) {
   const { group, update } = buildPet3D(pet);
   scene.add(group);
   update(1.2);
+
+  group.updateMatrixWorld(true);
+  {
+    const bb = new THREE.Box3().setFromObject(group);
+    const cy = (bb.min.y + bb.max.y) / 2;
+    const halfH = Math.max((bb.max.y - bb.min.y) / 2, 0.9);
+    const fovRad = (cam.fov * Math.PI) / 180;
+    const margin = 0.30; // 与 Pet3D 相同的动态余量（呼吸/光点扫掠）
+    const dist = Math.min(8.5, Math.max(4.6, (halfH + margin) / Math.tan(fovRad / 2)));
+    cam.position.set(0, cy, dist);
+    cam.lookAt(0, cy, 0);
+  }
 
   let url = '';
   try {

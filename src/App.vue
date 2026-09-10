@@ -647,11 +647,13 @@ function evExp(pet) {
 
 // ---- 存档导入导出 ----
 function doExport() {
-  // 存档 + 灵魂档案 + 聊天记录 + LLM 配置一起导出（人格/羁绊/记忆/接口配置不丢失）
+  // 存档 + 灵魂档案 + 聊天记录 + LLM 配置一起导出（人格/羁绊/记忆/接口配置不丢失）。
+  // apiKey 除外：导出文件常被分享来排查问题，密钥绝不能随之出门（隐私最小化）；
+  // baseUrl/model/enabled 保留，导入方自填自己的 key。
   const blob = new Blob([exportSaveText(JSON.parse(JSON.stringify({ ...save, version: 1 })), {
     souls: exportSouls(),
     chats: exportChats(),
-    llm: { ...llmConfig },
+    llm: { baseUrl: llmConfig.baseUrl, model: llmConfig.model, enabled: llmConfig.enabled },
   })], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

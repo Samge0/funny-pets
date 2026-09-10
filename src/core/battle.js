@@ -62,11 +62,16 @@ function execMove(src, dst, move, isPlayer, events) {
   }
   if (move.power) {
     const r = calcDamage(src, dst, move);
+    // 免疫（eff=0）：完全无效——0 伤害、不扣血（此前 Math.max(1,...) 保底让免疫也掉 1 HP，
+    // 与战报文案"没有效果"矛盾，免疫形同虚设）
+    if (r.eff === 0) {
+      events.push({ type: 'damage', side: isPlayer ? 'player' : 'wild', damage: 0, eff: 0, crit: false, moveName: move.name, text: `这对${dst.name}没有效果…` });
+      return;
+    }
     dst.hp = Math.max(0, dst.hp - r.damage);
     let text = `${isPlayer ? '你的' : '野生的'}${src.name}使出了${move.name}，${r.damage} 点伤害`;
     if (r.crit) text = `${isPlayer ? '你的' : '野生的'}${src.name}使出了${move.name}！会心一击 ${r.damage} 点！`;
-    if (r.eff === 0) { text = `这对${dst.name}没有效果…`; }
-    else if (r.eff >= 2) text += '效果超级拔群！';
+    if (r.eff >= 2) text += '效果超级拔群！';
     else if (r.eff > 1) text += '效果拔群！';
     else if (r.eff < 1 && r.eff > 0) text += '效果不太理想…';
     events.push({ type: 'damage', side: isPlayer ? 'player' : 'wild', damage: r.damage, eff: r.eff, crit: r.crit, moveName: move.name, text });

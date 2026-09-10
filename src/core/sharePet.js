@@ -15,17 +15,39 @@
 
 import { TYPES } from '../data/types.js';
 
-// 精简字段名（URL 长度敏感；JSON 键映射表双向）
+// ---- 精简字段名（URL 长度敏感；JSON 键映射表双向）----
+// 注意：全字段导出会把 lore（图鉴描述）原样带上——分享链接是公开可见的，
+// 与 v2 压缩"不透明"目标一致；字段名缩写降低可读性但非加密。
 const FIELDS = {
   n: 'name', s: 'seed', lv: 'level', ph: 'phase', ty: 'types',
   bt: 'bodyType', ra: 'rarity', lk: 'look', ex: 'extraParts', mv: 'moves', lo: 'lore',
   bs: 'base', iv: 'iv', na: 'nature', ex0: 'exp',
 };
 
+// 分享编码前的字段级脱敏：exp 不进链接。
+// exp 是纯养成进度（渲染与战斗都不读它——statsAt 只用 level），分享链接却把它
+// 原样带出去：链接给谁，谁就能解开压缩看你练到多少经验（进度隐私）。
+// base/iv/nature 保留：挑战战斗需要它们还原好友精灵的真实数值（核心玩法）。
+export function encodeSharePet(pet) {
+  const o = {};
+  // 允许进入分享链接的字段白名单（exp/ex0 排除）
+  const SHARE_FIELDS = ['n', 's', 'lv', 'ph', 'ty', 'bt', 'ra', 'lk', 'ex', 'mv', 'lo', 'bs', 'iv', 'na'];
+  for (const [k, full] of Object.entries(FIELDS)) {
+    if (!SHARE_FIELDS.includes(k)) continue;
+    if (pet[full] !== undefined && pet[full] !== null) o[k] = pet[full];
+  }
+  // moves 只留 name/type/power（战斗需要）
+  if (Array.isArray(o.mv)) o.mv = o.mv.map(m => ({ name: m.name, type: m.type, power: m.power, priority: m.priority, hits: m.hits })).filter(Boolean);
+  return o; // 明文对象；压缩/编码在 encodeShareParam 里做
+}
+
 // ---- 白名单（与 data/ 定义保持同源；渲染与战斗只接受这些值）----
+// 红队审计 2026-09-10（Z轮）：body 白名单此前抄错成 slim/stocky/fluffy/exotic——
+// 真实数据源 traits.js BODY_SHAPES 是 round/pear/tall/blob/drop。白名单外的值会被
+// 兜底成 'round'，所有分享出去的 pear/tall/blob/drop 体型在接收端全部静默变成圆滚滚。
 const BODY_TYPES = ['quadruped', 'bipedal', 'avian', 'serpent', 'aquatic', 'mochi'];
 const LOOK_ENUMS = {
-  body: ['round', 'slim', 'stocky', 'fluffy', 'exotic'],
+  body: ['round', 'pear', 'tall', 'blob', 'drop'],
   ears: ['none', 'round', 'pointy', 'long', 'fin'],
   tail: ['none', 'stub', 'curl', 'fluff', 'spark'],
   pattern: ['none', 'spots', 'stripe', 'belly'],
@@ -71,16 +93,6 @@ async function inflateBytes(bytes) {
 
 // 总长度闸门（压缩后）：正常分享压缩后 <1KB；>8192 无一例外是攻击载荷
 const MAX_ENCODED = 8192;
-
-export function encodeSharePet(pet) {
-  const o = {};
-  for (const [k, full] of Object.entries(FIELDS)) {
-    if (pet[full] !== undefined && pet[full] !== null) o[k] = pet[full];
-  }
-  // moves 只留 name/type/power（战斗需要），look 原样
-  if (Array.isArray(o.mv)) o.mv = o.mv.map(m => ({ name: m.name, type: m.type, power: m.power, priority: m.priority, hits: m.hits })).filter(Boolean);
-  return o; // 明文对象；压缩/编码在 encodeShareParam 里做
-}
 
 /** v2：对象 → 压缩 base64url 参数（异步）。环境不支持时降级 v1 JSON。 */
 export async function encodeShareParam(pet) {

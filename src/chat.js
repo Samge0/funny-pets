@@ -92,10 +92,19 @@ export function exportChats() {
   return JSON.parse(JSON.stringify(all()));
 }
 
-// 导入聊天记录（存档导入时恢复）
+// 导入校验：chats 同为外部输入。坏结构被替换为空记录，UI 读到的是安全形态。
 export function importChats(data) {
-  if (data && typeof data === 'object') {
-    cache = JSON.parse(JSON.stringify(data));
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const clean = {};
+    for (const [k, v] of Object.entries(data).slice(0, 200)) {
+      if (!v || typeof v !== 'object' || Array.isArray(v)) continue;
+      const msgs = Array.isArray(v.messages)
+        ? v.messages.filter(m => m && typeof m === 'object' && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string').slice(-60)
+          .map(m => ({ role: m.role, content: m.content.slice(0, 2000), t: Number.isFinite(m.t) ? m.t : Date.now() }))
+        : [];
+      clean[k] = { messages: msgs, total: Number.isSafeInteger(v.total) && v.total >= 0 ? v.total : msgs.length, compressedAt: Number.isSafeInteger(v.compressedAt) ? v.compressedAt : 0 };
+    }
+    cache = clean;
     writeAll();
   }
 }

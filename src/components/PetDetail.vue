@@ -206,13 +206,17 @@ async function send() {
   const soulSnapshot = JSON.parse(JSON.stringify(soul.value));
   const uid = petData.uid;
   draft.value = '';
+  // 先取历史快照再 appendChat：chat.value 是 computed，append 之后重新求值会把
+  // 刚发的用户消息也带进 recentMessages，而 buildChatMessages 又会追加 userText ——
+  // 同一条消息在 prompt 里出现两次（token 浪费 + 模型复读倾向）
+  const history = chat.value.messages.map(m => ({ role: m.role, content: m.content }));
   appendChat(petData.uid, 'user', text);
 
 
   typing.value = true;
   typingText.value = '';
   try {
-    const result = await chatWithSoul(llmConfig, petData, soulSnapshot, text, chat.value.messages);
+    const result = await chatWithSoul(llmConfig, petData, soulSnapshot, text, history);
     typingText.value = '';
     appendChat(petData.uid, 'assistant', result.body);
 

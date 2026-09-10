@@ -228,9 +228,60 @@ export function onEvolve(soul, newName, phase) {
 export function exportSouls() {
   return JSON.parse(JSON.stringify(all()));
 }
+
+// 导入校验：存档文件是外部输入（可能损坏/被构造），逐条校验 soul 结构，
+// 非法条目直接丢弃（regenerate on next ensureSoul），而不是让坏对象进 UI 炸详情页。
+function sanitizeSoul(s) {
+  if (!s || typeof s !== 'object' || Array.isArray(s)) return null;
+  const id = (s.identity && typeof s.identity === 'object') ? s.identity : {};
+  const traits = (s.traits && typeof s.traits === 'object') ? s.traits : {};
+  const rel = (s.relation && typeof s.relation === 'object') ? s.relation : {};
+  const mem = (s.memory && typeof s.memory === 'object') ? s.memory : {};
+  const num = (v, lo, hi, dflt) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(Math.max(v, lo), hi) : dflt);
+  const str = (v, dflt, max) => (typeof v === 'string' && v.trim() ? v.slice(0, max) : dflt);
+  return {
+    version: 1,
+    createdAt: num(s.createdAt, 0, 1e15, Date.now()),
+    identity: {
+      origin: str(id.origin, '来历不明', 60),
+      verbalTic: str(id.verbalTic, '…', 12),
+      love: str(id.love, '未知', 20),
+      hate: str(id.hate, '未知', 20),
+      value: str(id.value, '活下去', 40),
+      form: str(id.form, '初生', 12),
+      forms: Array.isArray(id.forms) ? id.forms.filter(f => typeof f === 'string').slice(0, 6) : ['初生'],
+    },
+    traits: {
+      warmth: num(traits.warmth, -1, 1, 0),
+      energy: num(traits.energy, -1, 1, 0),
+      pride: num(traits.pride, -1, 1, 0),
+      curiosity: num(traits.curiosity, -1, 1, 0),
+    },
+    memory: {
+      profile: Array.isArray(mem.profile) ? mem.profile.filter(f => typeof f === 'string' && f.trim()).slice(0, 12) : [],
+      episodic: Array.isArray(mem.episodic)
+        ? mem.episodic.filter(e => e && typeof e === 'object' && typeof e.text === 'string').slice(-20).map(e => ({ t: num(e.t, 0, 1e15, Date.now()), text: e.text.slice(0, 120) }))
+        : [],
+    },
+    relation: {
+      affinity: num(rel.affinity, 0, 100, 20),
+      title: ['训练家', '搭档', '挚友', '家人'].includes(rel.title) ? rel.title : '训练家',
+      chats: num(rel.chats, 0, 1e9, 0),
+      battles: num(rel.battles, 0, 1e9, 0),
+      wins: num(rel.wins, 0, 1e9, 0),
+      losses: num(rel.losses, 0, 1e9, 0),
+    },
+  };
+}
+
 export function importSouls(data) {
-  if (data && typeof data === 'object') {
-    cache = data;
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const clean = {};
+    for (const [k, v] of Object.entries(data).slice(0, 200)) { // 条目上限：防超大对象
+      const s = sanitizeSoul(v);
+      if (s) clean[k] = s;
+    }
+    cache = clean;
     saveAll();
   }
 }
