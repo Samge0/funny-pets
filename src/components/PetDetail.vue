@@ -122,8 +122,9 @@ function chipStyle(t) { return { background: TYPE_COLORS[t] ?? '#9fa19f' }; }
 function close() { emit('close'); }
 
 // 分享：#p= 链接（纯前端，无后端）。查看者只读观赏 + 可挑战，聊天天然不可用
-function share() {
-  const url = shareUrl(props.pet);
+// v2：链接为压缩编码（异步 deflate），不再暴露明文 JSON
+async function share() {
+  const url = await shareUrl(props.pet);
   const done = () => showToast('分享链接已复制！好友打开即可观赏或挑战', 3200);
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(url).then(done).catch(() => {

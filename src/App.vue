@@ -40,8 +40,9 @@ const BALLS_MAX = 5;
 
 // ---- 分享观赏模式（#p=...）：只读 3D 展示 + 可挑战；禁聊天 ----
 const sharedPet = ref(null);   // 分享来的宠物（解码后）
-(function initShared() {
-  const shared = readSharedFromHash();
+// v2 分享链接是压缩编码（异步 inflate）：挂载前解析，防止短暂闪地图视图
+(async function initShared() {
+  const shared = await readSharedFromHash();
   if (shared) {
     sharedPet.value = shared.pet;
     view.value = 'shared';
@@ -675,9 +676,9 @@ function doReset() {
   location.reload();
 }
 
-// 挂载后回到地图（但分享观赏模式除外：#p= 链接进来要保持 shared 视图，
-// 此前无条件重置会把 initShared 设置的 view 覆盖回 map → 分享页永远进不去）
-onMounted(() => { if (!sharedPet.value) view.value = 'map'; });
+// 挂载后回到地图（但分享观赏模式除外：#p= 链接进来要保持 shared 视图）。
+// initShared 是异步（v2 压缩解码）——挂载时可能尚未完成：只在没有 #p= hash 时立即回地图
+onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.value = 'map'; });
 </script>
 
 <template>

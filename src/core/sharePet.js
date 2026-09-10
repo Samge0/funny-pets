@@ -1,14 +1,17 @@
-// 分享链接编解码：宠物数据 → URL hash（#p=...），纯前端无后端。
+// 分享链接编解码：宠物数据 → URL hash，纯前端无后端。
 // 查看者打开后进入只读观赏模式：3D 展示 + 随机跳动 + 点击触发跳动，
 // 禁聊天；可用自己的宠物挑战（战斗引擎复用，挑战结果不影响分享者存档）。
 //
+// v2 编码（2026-09-10）：明文 JSON → deflate 压缩 → base64url。
+// 目的：① 链接短且不透明（明文 JSON 里的名字/描述/数值直接暴露在 URL 里，
+// 分享出去观感差）；② deflate 对这种重复键 JSON 压缩率 ~60-75%。
+// 格式：#p=v2.<base64url>（v2 前缀区分版本；无前缀 = v1 明文，继续兼容读取）。
+// 兼容性：CompressionStream/DecompressionStream 浏览器 2023 起全支持（Chrome 80+/
+// Firefox 113+/Safari 16.4+）；Node 18+ 原生（deep-test 可直接跑）。都不在时降级 v1 明文。
+//
 // 安全（红队审计 2026-09-10）：#p= 是完整的不可信输入面——任何人的浏览器都能构造。
-// 此前 decodeSharePet 只校验 4 个字段的类型，导致：
-//   - 非法 types（如 "dragonZZZ"）→ CHART[-1] undefined → battleTurn 崩溃/白屏
-//   - level=2^53 / power=1e15 / base=1e15 → 数值溢出与 NaN HP 不死怪
-//   - 10000 个 moves / 5000 个 extraParts → URL 放大 + 渲染卡死
-//   - 缺 base/iv/nature → withStats(statsAt) 读 undefined.hp 直接崩
-// 现在按白名单 + 范围严格校验，任何字段越界即整体拒绝（返回 null 走"链接无效"路径）。
+// decode 侧不关心载荷是压缩还是明文：解出对象后走同一套白名单校验，
+// 任何字段越界即整体拒绝（返回 null 走"链接无效"路径）。
 
 import { TYPES } from '../data/types.js';
 
@@ -36,6 +39,39 @@ const LOOK_PARTS = ['ears', 'tail', 'accessory', 'body'];
 // 数值夹取：安全整数 + 范围内才接受，否则用默认值
 const clampInt = (v, lo, hi, dflt) => (Number.isSafeInteger(v) && v >= lo && v <= hi ? v : dflt);
 
+// ---- v2 压缩编解码（deflate + base64url，无 padding）----
+function bytesToB64Url(bytes) {
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  // btoa 输出含 +/=：URL 安全替换 + 去 padding
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function b64UrlToBytes(s) {
+  const b64 = s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (s.length % 4)) % 4);
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+const hasCompressionStreams = typeof CompressionStream === 'function'
+  && typeof DecompressionStream === 'function';
+
+async function deflateBytes(text) {
+  const cs = new CompressionStream('deflate');
+  const stream = new Blob([text]).stream().pipeThrough(cs);
+  const buf = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buf);
+}
+async function inflateBytes(bytes) {
+  const ds = new DecompressionStream('deflate');
+  const stream = new Blob([bytes]).stream().pipeThrough(ds);
+  return await new Response(stream).text();
+}
+
+// 总长度闸门（压缩后）：正常分享压缩后 <1KB；>8192 无一例外是攻击载荷
+const MAX_ENCODED = 8192;
+
 export function encodeSharePet(pet) {
   const o = {};
   for (const [k, full] of Object.entries(FIELDS)) {
@@ -43,19 +79,53 @@ export function encodeSharePet(pet) {
   }
   // moves 只留 name/type/power（战斗需要），look 原样
   if (Array.isArray(o.mv)) o.mv = o.mv.map(m => ({ name: m.name, type: m.type, power: m.power, priority: m.priority, hits: m.hits })).filter(Boolean);
-  const json = JSON.stringify(o);
-  return encodeURIComponent(json);
+  return o; // 明文对象；压缩/编码在 encodeShareParam 里做
 }
 
-export function decodeSharePet(encoded) {
-  // 总长度闸门：URL hash 传不了这么多合法数据，超长直接拒（防炸弹/放大）
-  if (typeof encoded !== 'string' || encoded.length > 8192) return null;
+/** v2：对象 → 压缩 base64url 参数（异步）。环境不支持时降级 v1 JSON。 */
+export async function encodeShareParam(pet) {
+  const o = encodeSharePet(pet);
+  const json = JSON.stringify(o);
+  if (hasCompressionStreams) {
+    try {
+      const compressed = await deflateBytes(json);
+      const param = 'v2.' + bytesToB64Url(compressed);
+      // 压缩后反而更长（极小载荷理论可能）：取短者
+      const plain = encodeURIComponent(json);
+      return param.length <= plain.length ? param : json;
+    } catch { /* 压缩失败降级明文 */ }
+  }
+  return json;
+}
+
+/** 入口统一解码：v2.<b64url> → inflate；v1 明文 JSON → 直接 parse。异步。 */
+export async function decodeShareParam(param) {
+  if (typeof param !== 'string' || !param.length || param.length > MAX_ENCODED) return null;
+  let json = null;
+  if (param.startsWith('v2.')) {
+    if (!hasCompressionStreams) return null;
+    try {
+      json = await inflateBytes(b64UrlToBytes(param.slice(3)));
+    } catch {
+      return null; // 损坏/伪造的压缩流
+    }
+  } else {
+    json = param; // v1 明文（可能是 encodeURIComponent 过的 JSON）
+    if (json.startsWith('%7B') || json.startsWith('%5B')) {
+      try { json = decodeURIComponent(json); } catch { return null; }
+    }
+  }
   let o;
   try {
-    o = JSON.parse(decodeURIComponent(encoded));
+    o = JSON.parse(json);
   } catch {
     return null;
   }
+  return o;
+}
+
+// ---- 校验：v1/v2 共用（decodeSharePet 保留同步版本供旧调用方/测试）----
+function validatePet(o) {
   if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
 
   const pet = {};
@@ -114,7 +184,6 @@ export function decodeSharePet(encoded) {
   }
 
   // base/iv/nature：挑战路径 withStats→statsAt 必需；缺失或非法时按等级生成保守默认值
-  const num01 = (v, dflt) => (typeof v === 'number' && Number.isFinite(v) ? v : dflt);
   const bs = (pet.base && typeof pet.base === 'object' && !Array.isArray(pet.base)) ? pet.base : {};
   const iv = (pet.iv && typeof pet.iv === 'object' && !Array.isArray(pet.iv)) ? pet.iv : {};
   pet.base = {};
@@ -134,17 +203,35 @@ export function decodeSharePet(encoded) {
   return pet;
 }
 
-// 生成完整分享 URL
-export function shareUrl(pet) {
+// v1 同步解码（明文路径；保留给旧签名调用方，内部走同一套校验）
+export function decodeSharePet(encoded) {
+  if (typeof encoded !== 'string' || !encoded.length || encoded.length > MAX_ENCODED) return null;
+  let o = null;
+  try {
+    o = JSON.parse(decodeURIComponent(encoded));
+  } catch {
+    return null;
+  }
+  return validatePet(o);
+}
+
+// v2 异步解码（入口统一路径）
+export async function decodeSharePetAsync(encoded) {
+  const o = await decodeShareParam(encoded);
+  return o ? validatePet(o) : null;
+}
+
+// 生成完整分享 URL（异步：v2 压缩）
+export async function shareUrl(pet) {
   const u = new URL(location.href);
-  u.hash = 'p=' + encodeSharePet(pet);
+  u.hash = 'p=' + await encodeShareParam(pet);
   return u.toString();
 }
 
-// 启动时解析（main.js 或 App 挂载时调用一次）
-export function readSharedFromHash() {
+// 启动时解析（main.js 或 App 挂载时调用一次；异步版）
+export async function readSharedFromHash() {
   const m = location.hash.match(/^#p=(.+)$/);
   if (!m) return null;
-  const pet = decodeSharePet(m[1]);
+  const pet = await decodeSharePetAsync(m[1]);
   return pet ? { pet, raw: m[1] } : null;
 }

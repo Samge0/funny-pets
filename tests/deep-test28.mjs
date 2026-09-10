@@ -44,6 +44,7 @@ const mkPet = (uid, seed, over = {}) => ({
 const mkPetSrc = mkPet.toString();
 
 // ============ SEC-1: 恶意分享链接（3 个变体逐个访问） ============
+// v2 压缩版恶意载荷在页内构造（CompressionStream 浏览器原生）：攻击者同样可以压缩后再发
 const evilPayloads = [
   ['非法types', { n: '炸', s: 1, lv: 5, ty: ['dragonZZZ'], mv: [{ name: 'x', type: 'dragonZZZ', power: 10 }] }],
   ['数值炸弹', { n: '炸', s: 1, lv: 9007199254740993, ty: ['火'], mv: [{ name: 'x', type: '火', power: 1e15 }], bs: { hp: 1e15, atk: 1e15, def: 1e15, spd: 1e15 } }],
@@ -63,6 +64,30 @@ for (const [label, payload] of evilPayloads) {
   const crashed = errors.length > 0 || !state.appAlive;
   report(`SEC-1(${label})`, `恶意分享链接不崩不进战斗（${label}）`, crashed,
     `sharedView=${state.sharedView}, mapCards=${state.mapBtns}, pageerrors=${errors.length}`);
+  errors.length = 0;
+}
+
+// ============ SEC-1b: v2 压缩版恶意载荷（攻击者也能用压缩格式） ============
+{
+  const evilV2 = await page.evaluate(async () => {
+    const payload = { n: '炸', s: 1, lv: 9007199254740993, ty: ['dragonZZZ'], mv: [{ name: 'x', type: 'dragonZZZ', power: 1e15 }] };
+    const json = JSON.stringify(payload);
+    const cs = new CompressionStream('deflate');
+    const buf = await new Response(new Blob([json]).stream().pipeThrough(cs)).arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    for (const b of bytes) bin += String.fromCharCode(b);
+    return 'v2.' + btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  });
+  await page.goto(base + '#p=' + evilV2, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(600);
+  const st = await page.evaluate(() => ({
+    appAlive: !!document.querySelector('.shell'),
+    sharedView: !!document.querySelector('.shared-view'),
+  }));
+  const crashed = errors.length > 0 || !st.appAlive;
+  report('SEC-1b(v2炸弹)', 'v2 压缩恶意链接不崩不进战斗', crashed,
+    `sharedView=${st.sharedView}, pageerrors=${errors.length}`);
   errors.length = 0;
 }
 
