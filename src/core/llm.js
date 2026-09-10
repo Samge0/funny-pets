@@ -3,7 +3,7 @@
 
 import { TYPES } from '../data/types.js';
 import { buildChatMessages, buildTauntMessages, buildCompressMessages, parseSoulReply } from './soulPrompt.js';
-import { langDirective } from './i18n.js';
+import { langDirective, locale, moveName as moveNameI18n } from './i18n.js';
 
 // 语言指令（所有 LLM 通道共用）：设置页语言下拉控制，默认跟随浏览器。
 // 写在 system 开头最稳（首 token 引导强）；同时强调名字等专有内容也按该语言。
@@ -222,7 +222,8 @@ export function localShareCopy(pet, traitText, relation = '亲密伙伴') {
   return `${o} ${b} ✨ 点链接来观赏或向我发起挑战吧！`;
 }
 
-// ---- 本地兜底台词（无 LLM 或失败时；按性格四维选模板） ----
+// ---- 本地兜底台词（无 LLM 或失败时；按性格四维选模板）----
+// i18n：zh 用原模板；en/ja 专属模板（其他语言回落 en）。{move}/{defender}/{trainer} 占位符同构。
 const TAUNT_TEMPLATES = {
   big: ['看我的{move}！{defender}接招吧！', '这招{move}怎么样！', '{defender}，尝尝这个！'],
   normal: ['{move}，上吧！', '就是现在，{move}！', '别小看我，{move}！'],
@@ -232,15 +233,44 @@ const TAUNT_TEMPLATES = {
   miss: ['啊！打歪了…', '可恶，躲开了！'],
   lowhp: ['撑住…还不能倒下…', '为了{trainer}，也要站到底！'],
 };
+const TAUNT_TEMPLATES_EN = {
+  big: ['Take this, {defender} — {move}!', 'How do you like {move}?!', '{defender}, taste this!'],
+  normal: ['{move}, go!', 'Now — {move}!', "Don't underestimate {move}!"],
+  weak: ['Hmm… {move} barely worked…', 'Ugh, {defender} is tough!', 'One more will do it!'],
+  crit: ['Critical hit! Did you see that, {defender}?!', 'A perfect strike!'],
+  status: ['Powering up…', 'Steady… take it slow.', 'Heh, enjoy the show.'],
+  miss: ['Ah! It missed…', 'Tch, it dodged!'],
+  lowhp: ["Hold on… I won't fall yet…", 'For {trainer}, I stand to the end!'],
+};
+const TAUNT_TEMPLATES_JA = {
+  big: ['これでどうだ、{defender}！{move}！', '{move}はどう！', '{defender}、くらえ！'],
+  normal: ['{move}、行くぞ！', '今だ、{move}！', '{move}をなめるな！'],
+  weak: ['う…{move}がきかない…', 'くそ、{defender}が硬い！', 'もう一回で決まる！'],
+  crit: ['急所に当たった！見たか{defender}！', '完璧な一撃！'],
+  status: ['強化して…', '落ち着け、ゆっくりいこう。', 'ふふ、いいショーになるぞ。'],
+  miss: ['あ！それた…', 'くそ、かわされた！'],
+  lowhp: ['まだ…倒れられない…', '{trainer}のために、最後まで立つ！'],
+};
+const TAUNT_POOL = {
+  zh: TAUNT_TEMPLATES, 'zh-TW': TAUNT_TEMPLATES,
+  ja: TAUNT_TEMPLATES_JA, en: TAUNT_TEMPLATES_EN,
+};
 
 export function localTaunt(attacker, defender, moveName, damage, eff, crit, myHpRatio = 1, trainerTitle = '训练家') {
   let pool;
-  if (myHpRatio < 0.25) pool = TAUNT_TEMPLATES.lowhp;
-  else if (crit) pool = TAUNT_TEMPLATES.crit;
-  else if (!damage) pool = TAUNT_TEMPLATES.status;
-  else if (eff >= 2 || (eff > 1 && damage > 30)) pool = TAUNT_TEMPLATES.big;
-  else if (damage < 12) pool = TAUNT_TEMPLATES.weak;
-  else pool = TAUNT_TEMPLATES.normal;
-  const t = pool[Math.floor(Math.random() * pool.length)];
-  return t.replace(/\{move\}/g, moveName).replace(/\{defender\}/g, defender.name).replace(/\{trainer\}/g, trainerTitle);
+  const T = TAUNT_POOL[locale.value] ?? TAUNT_TEMPLATES_EN;
+  if (myHpRatio < 0.25) pool = T.lowhp;
+  else if (crit) pool = T.crit;
+  else if (!damage) pool = T.status;
+  else if (eff >= 2 || (eff > 1 && damage > 30)) pool = T.big;
+  else if (damage < 12) pool = T.weak;
+  else pool = T.normal;
+  const tpl = pool[Math.floor(Math.random() * pool.length)];
+  // 技能名显示层映射（zh 显示规范名；en/ja/其他显示映射名——defender 名字是专有名保留原样）
+  const mvDisp = moveNameI18n(moveName);
+  return tpl
+    .replace(/\{move\}/g, mvDisp)
+    .replace(/\{defender\}/g, defender.name)
+    .replace(/\{trainer\}/g, locale.value === 'zh' ? trainerTitle : (TAUNT_TRAINER[locale.value] ?? 'Trainer'));
 }
+const TAUNT_TRAINER = { en: 'Trainer', ja: 'トレーナー', 'zh-TW': '訓練家' };

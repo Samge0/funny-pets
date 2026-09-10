@@ -102,6 +102,9 @@ export function langDirective() { return LANG_DIRECTIVE[locale.value] ?? LANG_DI
 
 // ============ 翻译词典（key = 中文原文；未收录 = 原样返回） ============
 const EN = {
+  '你是野生精灵，一个训练家带着{defender}闯进了你的领地。你用技能「{move}」{crit}对{defender}造成了 {dmg} 点伤害（{eff}）。你当前体力 {hp}%。用一句话说出你此刻的心声（可以对入侵者放话、嘲讽或为自己打气）。': 'You are a wild pet — a trainer has invaded your territory with {defender}. You used 「{move}」{crit} and dealt {dmg} damage to {defender} ({eff}). Your HP is at {hp}%. Say one line of what you are thinking right now (taunt the intruder, mock them, or hype yourself up).',
+  '你的技能「{move}」{crit}对{defender}造成了 {dmg} 点伤害（{eff}）。你当前体力 {hp}%。用一句话说出你此刻的战斗心声。': 'Your move 「{move}」{crit} dealt {dmg} damage to {defender} ({eff}). Your HP is at {hp}%. Say one line of your battle thoughts.',
+  '是会心一击': ' — a critical hit — ', '完全无效': 'completely ineffective', '效果不佳': 'not very effective', '效果一般': 'normal effectiveness',
   'app.title': 'FunPets · Fantasy Pet Adventure',
   'app.brand': 'FunPets',
   // nav
@@ -285,6 +288,9 @@ const EN = {
 };
 
 const JA = {
+  '你是野生精灵，一个训练家带着{defender}闯进了你的领地。你用技能「{move}」{crit}对{defender}造成了 {dmg} 点伤害（{eff}）。你当前体力 {hp}%。用一句话说出你此刻的心声（可以对入侵者放话、嘲讽或为自己打气）。': 'あなたは野生のモンスター。トレーナーが{defender}を連れて領域に闘込んだ。わざ「{move}」{crit}で{defender}に{dmg}ダメージ（{eff}）。現在のHPは{hp}%。今の本音を一言で語って（侵入者に啖やけてもよし）。',
+  '你的技能「{move}」{crit}对{defender}造成了 {dmg} 点伤害（{eff}）。你当前体力 {hp}%。用一句话说出你此刻的战斗心声。': 'わざ「{move}」{crit}が{defender}に{dmg}ダメージ（{eff}）。HPは{hp}%。今の戦闘中の本音を一言で。',
+  '是会心一击': '急所の一撃で', '完全无效': 'こうかがない', '效果不佳': 'いまひとつ', '效果一般': 'ふつうの効果',
   'app.title': 'ファンペット · ふしぎモンスター',
   'app.brand': 'ファンペット',
   '地图': 'マップ', '相遇': 'こうぐう', '图鉴': 'ずかん', '设置': '設定', '🐾 分享宠': '🐾 シェア',

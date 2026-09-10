@@ -355,11 +355,16 @@ function visibleTauntText(raw) {
 function streamTaunt(bubble, attacker, defender, evt, soul, isWild) {
   const trainerTitle = soul.relation.title;
   const hpRatio = attacker.hp / Math.max(1, attacker.maxHp);
-  const effText = evt.eff >= 2 ? '效果超级拔群' : evt.eff > 1 ? '效果拔群' : evt.eff === 0 ? '完全无效' : evt.eff < 1 ? '效果不佳' : '效果一般';
-  // 视角文案：我方=对训练家说心声 / 敌方=野外精灵对入侵者的反应
+  // 效果描述走 i18n（同时用于战报飘字与 LLM scene 上下文，保证场景语言一致）
+  const effText = evt.eff >= 2 ? t('效果超级拔群！') : evt.eff > 1 ? t('效果拔群！') : evt.eff === 0 ? t('完全无效') : evt.eff < 1 ? t('效果不佳') : t('效果一般');
+  // 视角文案：我方=对训练家说心声 / 敌方=野外精灵对入侵者的反应。
+  // scene 必须用当前语言生成——它是 user 消息（末位上下文权重最高），
+  // 中文 scene 会把 LLM 输出强行拉回中文，压过 system 的语言指令
+  const move = moveLabel(evt.moveName);
+  const critTxt = evt.crit ? t('是会心一击') : '';
   const scene = isWild
-    ? `你是野生精灵，一个训练家带着${defender.name}闯进了你的领地。你用技能「${evt.moveName}」${evt.crit ? '打出了会心一击，' : ''}对${defender.name}造成 ${evt.damage} 点伤害（${effText}）。你当前体力 ${Math.round(hpRatio * 100)}%。用一句话说出你此刻的心声（可以对入侵者放话、嘲讽或为自己打气）。`
-    : `你的技能「${evt.moveName}」${evt.crit ? '打出了会心一击' : ''}，对${defender.name}造成 ${evt.damage} 点伤害（${effText}）。你当前体力 ${Math.round(hpRatio * 100)}%。用一句话说出你此刻的战斗心声。`;
+    ? t('你是野生精灵，一个训练家带着{defender}闯进了你的领地。你用技能「{move}」{crit}对{defender}造成了 {dmg} 点伤害（{eff}）。你当前体力 {hp}%。用一句话说出你此刻的心声（可以对入侵者放话、嘲讽或为自己打气）。', { defender: defender.name, move, crit: critTxt, dmg: evt.damage, eff: effText, hp: Math.round(hpRatio * 100) })
+    : t('你的技能「{move}」{crit}对{defender}造成了 {dmg} 点伤害（{eff}）。你当前体力 {hp}%。用一句话说出你此刻的战斗心声。', { move, crit: critTxt, defender: defender.name, dmg: evt.damage, eff: effText, hp: Math.round(hpRatio * 100) });
 
   const localFallback = localTaunt(attacker, defender, evt.moveName, evt.damage, evt.eff, evt.crit, hpRatio, trainerTitle);
   bubble.who = isWild ? 'wild' : 'player';

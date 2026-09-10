@@ -99,6 +99,9 @@ export function buildTauntMessages(pet, soul, scene) {
   return [
     { role: 'system', content: buildSoulSystem(pet, soul, 'battle') },
     { role: 'user', content: scene },
+    // 语言提醒紧贴输出位：system 的指令隔着大段剧情 scene 会被稀释，
+    // 模型经常顺着 scene 的语言或历史记忆的语言跑偏——末位再钉一次
+    { role: 'user', content: `（只输出${langDirective()}台词，一行，不要任何解释或其他语言）` },
   ];
 }
 
