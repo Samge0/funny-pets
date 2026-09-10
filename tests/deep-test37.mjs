@@ -59,14 +59,15 @@ await page.goto(base, { waitUntil: 'networkidle' });
     }));
   }, mkPetSrc);
   await page.reload({ waitUntil: 'networkidle' });
-  await page.getByRole('button', { name: /设置/ }).click();
+  await page.getByRole('button', { name: /Settings|设置|設定/ }).click();
   await page.locator('.settings-view').waitFor({ timeout: 3000 });
   const sel = page.locator('.settings-view select.lang-select');
   const cnt = await sel.count();
   report('L1a', '设置页存在语言下拉', cnt === 0, `select=${cnt}`);
   if (cnt) {
-    const val = await sel.inputValue();
-    report('L1b', '默认选中浏览器语言（en-US→en）', val !== 'en', `selected=${val}`);
+    const val = await sel.inputValue(); // auto（跟随浏览器）——绑定值是 auto
+    const navEn = await page.locator('nav.tabs button', { hasText: 'Map' }).count();
+    report('L1b', '默认跟随浏览器（en-US→UI 英文，下拉=auto）', navEn === 0 || val !== 'auto', `selected=${val}, navEn=${navEn}`);
     const opts = await sel.locator('option').count();
     report('L1c', '语言选项覆盖面（≥15 种）', opts < 15, `options=${opts}`);
   }
@@ -80,7 +81,7 @@ await page.goto(base, { waitUntil: 'networkidle' });
   const stored = await page.evaluate(() => localStorage.getItem('funny-pets-lang-v1'));
   report('L2a', '切换后写入 localStorage', stored !== 'ja', `stored=${stored}`);
   await page.reload({ waitUntil: 'networkidle' });
-  await page.getByRole('button', { name: /设置/ }).click();
+  await page.getByRole('button', { name: /Settings|设置|設定/ }).click();
   await page.locator('.settings-view').waitFor({ timeout: 3000 });
   const val2 = await page.locator('.settings-view select.lang-select').inputValue();
   report('L2b', '刷新后保持选择', val2 !== 'ja', `selected=${val2}`);
@@ -122,7 +123,7 @@ await page.goto(base, { waitUntil: 'networkidle' });
   report('L7', '长英文名不被截到 6 字符（≥19 字符保留）', wildName.length < 19, `name="${wildName}" (len=${wildName.length})`);
 
   // L4: 灵魂聊天
-  await page.getByRole('button', { name: /图鉴/ }).click();
+  await page.getByRole('button', { name: /图鉴|ずかん|Collection/ }).click();
   await page.locator('.dex-card').first().click();
   await page.locator('.detail-card').waitFor({ timeout: 5000 });
   const input = page.locator('.chat-input input');

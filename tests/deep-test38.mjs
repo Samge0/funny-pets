@@ -155,6 +155,56 @@ await page.reload({ waitUntil: 'networkidle' });
 
 // ============ 收尾：中文恢复 ============
 await page.evaluate(() => localStorage.setItem('funny-pets-lang-v1', 'zh'));
+// ============ I8: auto 跟随浏览器（本轮修复）============
+{
+  const ctx2 = await browser.newContext({ viewport: { width: 1180, height: 900 }, locale: 'zh-CN' });
+  const p2 = await ctx2.newPage();
+  await p2.goto(base, { waitUntil: 'networkidle' });
+  await p2.evaluate(() => localStorage.clear());
+  await p2.reload({ waitUntil: 'networkidle' });
+  await p2.getByRole('button', { name: /设置/ }).click();
+  await p2.locator('.settings-view').waitFor({ timeout: 3000 });
+  const selVal = await p2.locator('.lang-select').inputValue();
+  const stored = await p2.evaluate(() => localStorage.getItem('funny-pets-lang-v1'));
+  report('I8a', '无存储时下拉=auto 且未写 localStorage（真·跟随浏览器）', selVal !== 'auto' || stored !== null, `sel=${selVal}, stored=${stored}`);
+  // zh-CN 浏览器 + auto → UI 中文
+  const zhNav = await p2.locator('nav.tabs button', { hasText: '地图' }).count();
+  report('I8b', 'zh-CN 浏览器 + auto → UI 中文', zhNav === 0, `zhNav=${zhNav}`);
+  // auto hint 显示
+  const autoHint = await p2.evaluate(() => document.body.textContent.includes('当前跟随浏览器'));
+  report('I8c', 'auto 模式显示「当前跟随浏览器」提示', !autoHint, `hint=${autoHint}`);
+  // 切回 auto 后存储值是 auto
+  await p2.locator('.lang-select').selectOption('auto');
+  await p2.waitForTimeout(300);
+  const stored2 = await p2.evaluate(() => localStorage.getItem('funny-pets-lang-v1'));
+  report('I8d', '手动选 auto 存储 auto（不再锁语言）', stored2 !== 'auto', `stored=${stored2}`);
+  await p2.close(); await ctx2.close();
+}
+
+// ============ I9: 地图描述不消失（本轮修复）============
+{
+  // 主页面此时是 zh-TW（I7b 遗留）——先按繁体入口进设置切英文
+  await page.getByRole('button', { name: /設定/ }).click();
+  await page.locator('.settings-view').waitFor({ timeout: 3000 });
+  await page.locator('.lang-select').selectOption('en');
+  await page.waitForTimeout(400);
+  await page.locator('nav.tabs button', { hasText: 'Map' }).click();
+  await page.waitForTimeout(300);
+  const descCount = await page.locator('.map-desc').count();
+  const descEmpty = await page.evaluate(() => [...document.querySelectorAll('.map-desc')].filter(x => !x.textContent.trim()).length);
+  report('I9a', '英文下 6 条地图描述全部显示', descCount !== 6 || descEmpty > 0, `desc=${descCount}, empty=${descEmpty}`);
+  const firstDesc = (await page.locator('.map-desc').first().textContent())?.trim() ?? '';
+  report('I9b', '描述是英文翻译（Rolling grassy hills）', !/Rolling grassy/i.test(firstDesc), `"${firstDesc.slice(0, 40)}"`);
+  // 切回中文恢复中文描述
+  await page.locator('nav.tabs button', { hasText: 'Settings' }).click();
+  await page.locator('.lang-select').selectOption('zh');
+  await page.waitForTimeout(400);
+  await page.locator('nav.tabs button', { hasText: '地图' }).click();
+  await page.waitForTimeout(300);
+  const zhDesc = (await page.locator('.map-desc').first().textContent())?.trim() ?? '';
+  report('I9c', '中文下描述恢复中文', !/青草丘/.test(zhDesc), `"${zhDesc.slice(0, 30)}"`);
+}
+
 if (errors.length) console.log('\n页面错误:\n' + errors.join('\n'));
 await browser.close(); server.close();
 console.log('\n==== 深度检查 38 完成 ====');

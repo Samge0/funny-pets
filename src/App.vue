@@ -19,7 +19,7 @@ import PetDetail from './components/PetDetail.vue';
 import DevourChoice from './components/DevourChoice.vue';
 import GlobalToast from './components/GlobalToast.vue';
 import { readSharedFromHash, readGiftFromHash } from './core/sharePet.js';
-import { LANGUAGES, t, setLocale, typeName as typeNameOf, mapName as mapNameOf, rarityName as rarityNameOf, moveName, locale } from './core/i18n.js';
+import { LANGUAGES, t, setLocale, typeName as typeNameOf, mapName as mapNameOf, mapDesc as mapDescOf, rarityName as rarityNameOf, moveName, locale, langPrefValue } from './core/i18n.js';
 
 const view = ref('map'); // map | encounter | battle | dex | settings | shared
 const spawning = ref(false);
@@ -136,6 +136,7 @@ const typeChipStyle = (tp) => ({ background: TYPE_COLORS[tp] ?? '#9fa19f' });
 const typeLabel = (tp) => { void locale.value; return typeNameOf(tp); };
 const moveLabel = (m) => { void locale.value; return moveName(m); };
 const mapLabel = (m) => { void locale.value; return mapNameOf(m); };
+const mapDescLabel = (d) => { void locale.value; return mapDescOf(d); };
 const rarityLabel = (r) => { void locale.value; return rarityNameOf(r); };
 
 // 图鉴快照缓存：seed+phase 相同直接复用 dataURL（避免几十个 WebGL context）
@@ -702,8 +703,8 @@ function evExp(pet) {
 }
 
 // ---- 存档导入导出 ----
-// ---- 语言偏好（LLM 输出语言）：设置页下拉，默认浏览器语言，切换即存 ----
-const langPref = locale; // 直接绑定 i18n 的响应式 locale：切换即全局重渲染
+// ---- 语言偏好（LLM 输出语言）：设置页下拉，默认跟随浏览器，切换即存 ----
+const langPref = langPrefValue; // i18n 导出的响应式绑定值（'auto' 或具体 code）
 function onLangChange() {
   const ok = setLocale(langPref.value);
   if (ok) showToast(t('语言已切换'), 2000);
@@ -810,7 +811,7 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
             <span class="map-types">
               <i v-for="tp in map.favorTypes" :key="tp" class="chip" :style="typeChipStyle(tp)">{{ typeLabel(tp) }}</i>
             </span>
-            <span class="map-desc" v-if="locale === 'zh' || locale === 'zh-TW'">{{ map.desc }}</span>
+            <span class="map-desc">{{ mapDescLabel(map.desc) }}</span>
           </button>
         </div>
         <div v-if="spawning" class="spawn-mask"><div class="spinner"></div><p>{{ t('草丛沙沙作响…') }}</p></div>
@@ -1012,6 +1013,7 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
               <option v-for="l in LANGUAGES" :key="l.code" :value="l.code">{{ l.label }}</option>
             </select>
           </label>
+          <p class="hint" v-if="langPref === 'auto'">{{ t('当前跟随浏览器：{lang}', { lang: locale }) }}</p>
         </div>
         <div class="panel">
           <h3>{{ t('🤖 AI 随机生成（可选）') }}</h3>
