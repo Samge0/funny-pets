@@ -260,6 +260,16 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .empty { text-align: center; color: var(--text-dim); padding: 50px 0; }
 .shared-owner-hint { font-size: 12.5px; color: var(--text-dim); margin: 2px 0 8px; }
 
+/* ---- 语言下拉 ---- */
+.lang-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.lang-row span { font-size: 13px; color: var(--text-dim); flex-shrink: 0; }
+.lang-select {
+  flex: 1; max-width: 260px; padding: 7px 10px; border-radius: 10px;
+  border: 1px solid rgba(120,130,160,0.35); background: #fff; color: var(--text, #2a3040);
+  font-size: 13px; outline: none; cursor: pointer;
+}
+.lang-select:focus { border-color: var(--primary, #5b7fd4); }
+
 /* ---- 设置 ---- */
 .settings-view { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
 .panel {

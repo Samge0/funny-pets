@@ -19,6 +19,7 @@ import PetDetail from './components/PetDetail.vue';
 import DevourChoice from './components/DevourChoice.vue';
 import GlobalToast from './components/GlobalToast.vue';
 import { readSharedFromHash, readGiftFromHash } from './core/sharePet.js';
+import { LANGUAGES, readLangPref, writeLangPref } from './core/i18n.js';
 
 const view = ref('map'); // map | encounter | battle | dex | settings | shared
 const spawning = ref(false);
@@ -696,6 +697,12 @@ function evExp(pet) {
 }
 
 // ---- 存档导入导出 ----
+// ---- 语言偏好（LLM 输出语言）：设置页下拉，默认浏览器语言，切换即存 ----
+const langPref = ref(readLangPref());
+function onLangChange() {
+  const ok = writeLangPref(langPref.value);
+  if (ok) showToast(`AI 输出语言已切换（下次生成生效）`, 2000);
+}
 function doExport() {
   // 存档 + 灵魂档案 + 聊天记录 + LLM 配置一起导出（人格/羁绊/记忆/接口配置不丢失）。
   // apiKey 除外：导出文件常被分享来排查问题，密钥绝不能随之出门（隐私最小化）；
@@ -991,6 +998,16 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
 
       <!-- ============ 设置 ============ -->
       <section v-else-if="view === 'settings'" class="settings-view">
+        <div class="panel">
+          <h3>🌍 语言 / Language</h3>
+          <p class="hint">AI 生成内容的输出语言（精灵名字与描述、灵魂聊天、战斗台词、分享文案）。默认跟随浏览器，可手动切换。</p>
+          <label class="lang-row">
+            <span>输出语言</span>
+            <select class="lang-select" v-model="langPref" @change="onLangChange">
+              <option v-for="l in LANGUAGES" :key="l.code" :value="l.code">{{ l.label }}</option>
+            </select>
+          </label>
+        </div>
         <div class="panel">
           <h3>🤖 AI 随机生成（可选）</h3>
           <p class="hint">配置 OpenAI 兼容接口后，每次刷新精灵由大模型生成名字、属性与描述；关闭或失败时自动使用本地随机。API Key 仅保存在你的浏览器本地。</p>

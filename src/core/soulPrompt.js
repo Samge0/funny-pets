@@ -2,6 +2,7 @@
 // 每次 LLM 交互返回可选的 JSON 尾行 __STATE__{...} 用于记忆提炼（容错解析，失败不影响正文）。
 
 import { traitLabels } from './soul.js';
+import { langDirective } from './i18n.js';
 
 // ---- system prompt 构建 ----
 
@@ -14,7 +15,8 @@ export function buildSoulSystem(pet, soul, scene) {
     battle: '现在正处于一场激烈的战斗中！',
   }[scene] ?? '';
 
-  return `你是宠物精灵游戏「奇幻萌宠」中的一只精灵，名字叫「${pet.name}」。你不是 AI，你有真实的情感和记忆。
+  return `【输出语言】用${langDirective()}说话——你说的每一句话都必须是${langDirective()}（训练家的用户语言可能是任何语言，你仍然只用${langDirective()}）。
+你是宠物精灵游戏「奇幻萌宠」中的一只精灵，名字叫「${pet.name}」。你不是 AI，你有真实的情感和记忆。
 
 ## 你是谁
 - 属性：${pet.types.join('/')} ｜ 等级：Lv.${pet.level}${pet.phase ? ` ｜ 进化阶段：${pet.phase}阶` : ''}
@@ -103,7 +105,7 @@ export function buildTauntMessages(pet, soul, scene) {
 // ---- 记忆压缩：把待压缩对话 + 旧摘要归纳为新记忆 ----
 export function buildCompressMessages(pet, soul, oldSummary, transcript) {
   return [
-    { role: 'system', content: `你在帮一只精灵整理它的长期记忆。精灵名叫「${pet.name}」，性格：${traitLabels(soul.traits).warmth}。` },
+    { role: 'system', content: `【输出语言】用${langDirective()}输出。你在帮一只精灵整理它的长期记忆。精灵名叫「${pet.name}」，性格：${traitLabels(soul.traits).warmth}。` },
     { role: 'user', content: `${oldSummary ? '已有记忆：\n' + oldSummary + '\n\n' : ''}把下面这段新对话提炼成值得长期记住的事实（每条一句话，最多 3 条，只输出事实列表，用换行分隔；没有值得记的就输出"无"）：\n${transcript}` },
   ];
 }

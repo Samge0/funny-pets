@@ -3,6 +3,11 @@
 
 import { TYPES } from '../data/types.js';
 import { buildChatMessages, buildTauntMessages, buildCompressMessages, parseSoulReply } from './soulPrompt.js';
+import { langDirective } from './i18n.js';
+
+// 语言指令（所有 LLM 通道共用）：设置页语言下拉控制，默认跟随浏览器。
+// 写在 system 开头最稳（首 token 引导强）；同时强调名字等专有内容也按该语言。
+const langLine = () => `【输出语言】你必须使用${langDirective()}回复——所有正文、名字、描述、文案全部用${langDirective()}，不要混入其他语言。`;
 
 const PROMPT = `你是一个原创宠物精灵生成器。请随机生成一只全新的原创精灵，严格输出如下 JSON（不要输出任何其他文字）：
 {
@@ -41,7 +46,7 @@ async function chatRequest(cfg, messages, { temperature = 1.1, maxTokens = 400, 
 // （此前 temperature=1.1 默认值偏高，偶尔输出带围栏/斜杠转义坏 JSON → 整次降级随机）
 export async function generatePetWithLlm(cfg, signal) {
   const res = await chatRequest(cfg, [
-    { role: 'system', content: '你只输出严格的 JSON，不输出 markdown 代码块或其他文字。' },
+    { role: 'system', content: langLine() + '你只输出严格的 JSON，不输出 markdown 代码块或其他文字。' },
     { role: 'user', content: PROMPT },
   ], { temperature: 0.8, maxTokens: 400, signal });
   const data = await res.json();
@@ -66,7 +71,7 @@ export function parseLlmPet(text) {
     }
   }
 
-  const name = String(raw.name ?? '').trim().slice(0, 6);
+  const name = String(raw.name ?? '').trim().slice(0, 24);
   if (!name) throw new Error('LLM 返回缺少名字');
 
   const types = (Array.isArray(raw.types) ? raw.types : [raw.types])
@@ -161,7 +166,7 @@ const SHARE_PROMPT = (pet, traitText, relation) => `你是一只宠物精灵「$
 
 export async function generateShareCopy(cfg, pet, traitText, relation = '亲密伙伴', signal) {
   const res = await chatRequest(cfg, [
-    { role: 'system', content: '你是社交文案写手，只输出分享文案正文。' },
+    { role: 'system', content: langLine() + '你是社交文案写手，只输出分享文案正文。' },
     { role: 'user', content: SHARE_PROMPT(pet, traitText, relation) },
   ], { temperature: 1.0, maxTokens: 160, signal });
   const data = await res.json();
