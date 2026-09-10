@@ -44,8 +44,10 @@ export const DEVOUR_PART_CHANCE = 0.55;
 export const DEVOUR_MOVE_CHANCE_FLAT = 0.35;
 export const DEVOUR_PART_CHANCE_FLAT = 0.3;
 
-// 可掠夺的外观维度（任意部件都能吞，让玩家自由拼装造型）
-const DEVOUR_PARTS = ['ears', 'tail', 'accessory', 'pattern', 'eyes', 'body'];
+// 可掠夺的外观维度（任意部件都能吞，让玩家自由拼装造型）。
+// body（体型）排最前：它是唯一换骨架的维度（头身手脚形态全变），
+// 视觉分量最重——排在候选列表第一位，不再被 5 个小部件淹没在滚动区底部。
+const DEVOUR_PARTS = ['body', 'ears', 'tail', 'accessory', 'pattern', 'eyes'];
 
 /**
  * 掷出本场胜利可吞的技能候选（不含已学会的）。

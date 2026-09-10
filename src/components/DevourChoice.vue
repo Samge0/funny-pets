@@ -21,10 +21,11 @@
             <!-- 部件候选 -->
             <div v-if="offer.parts.length" class="devour-section">
               <h4>🎨 外观部件（勾选实时预览）</h4>
-              <div v-for="(pp, pi) in offer.parts" :key="pp.part + pp.theirs" class="devour-item" :class="{ picked: takePart[pi] }">
+              <div v-for="(pp, pi) in offer.parts" :key="pp.part + pp.theirs" class="devour-item" :class="{ picked: takePart[pi], 'devour-item-body': pp.part === 'body' }">
                 <label class="devour-take">
                   <input type="checkbox" v-model="takePart[pi]" />
                   <span class="part-name">{{ partLabel(pp.part) }}</span>
+                  <span v-if="pp.part === 'body'" class="body-tag">🦴 换骨架：头身手脚形态全变</span>
                   <span class="part-mode-tag">{{ partMode(pp, pi) }}</span>
                   <span class="part-preview">
                     <img class="preview-img" :src="previewSvg(pp.part, offer.currentLook[pp.part])" alt="吞前" width="48" height="48" />
@@ -241,6 +242,14 @@ function confirmAll() {
   padding: 7px 9px; margin-bottom: 8px; background: rgba(120,130,160,0.05);
 }
 .devour-item.picked { border-color: rgba(232,134,44,0.55); background: rgba(232,134,44,0.07); }
+/* body（体型）候选：换骨架的重磅选项，视觉强调 */
+.devour-item-body { border-color: rgba(156,74,184,0.5); background: rgba(156,74,184,0.06); }
+.devour-item-body.picked { border-color: rgba(156,74,184,0.75); background: rgba(156,74,184,0.12); }
+.body-tag {
+  font-size: 10px; color: #7a3aa8; background: rgba(156,74,184,0.14);
+  border: 1px solid rgba(156,74,184,0.45); border-radius: 8px; padding: 1px 7px;
+  font-weight: 700;
+}
 .devour-take { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13.5px; flex-wrap: wrap; }
 .devour-take small { color: #8a92a5; margin-left: auto; }
 .mv-name { font-weight: 700; border-left: 3px solid var(--type-color, #5b7fd4); padding-left: 6px; }
