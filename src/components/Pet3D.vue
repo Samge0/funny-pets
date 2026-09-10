@@ -123,7 +123,28 @@ function init() {
   pivot.add(built.group);
   scene.add(pivot);
 
-  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  // ---- 自适应取景：按模型真实包围盒调相机，高个宠物（bipedal/进化 phase）不被裁 ----
+  // 此前固定 position(0,1.05,5.4)+lookAt(0,0.05,0)，z=0 平面可见 y∈[-1.42,1.52]；
+  // bipedal phase2 包围盒到 y≈2.53，头顶/王冠整体被视锥裁掉（吞噬预览遮挡根因）。
+  // 策略：量 bbox → 目标中心对准视轴 → 距离=装下 (高/2+边距)/tan(fov/2)，但设上下限
+  // 防极端值：太近会失去微距感、太远模型过小，且不低于原 5.4 观感。
+  {
+    built.group.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(built.group);
+    const cy = (bb.min.y + bb.max.y) / 2;
+    const halfH = Math.max((bb.max.y - bb.min.y) / 2, 0.9); // 太扁的按 0.9 半高取景（留呼吸感）
+    const fovRad = (camera.fov * Math.PI) / 180;
+    // 上下留白 0.30：静态 bbox 之外还有动态余量——orbitDots 公转（y 0.15~0.65 扫掠 +
+    // 透视放大）、呼吸浮动 ±0.06、跳舞小跳 0.12、轻点跳跃 0.32（跳跃瞬时贴边可接受）
+    const margin = 0.30;
+    const dist = Math.min(8.5, Math.max(4.6, (halfH + margin) / Math.tan(fovRad / 2)));
+    camera.position.set(0, cy, dist);
+    camera.lookAt(0, cy, 0);
+  }
+
+  // preserveDrawingBuffer：让 canvas 像素可被 getImageData/截图读取（E2E 视觉断言依赖；
+  // 每帧成本可忽略——这是 168px 级别的小画布）
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(props.size, props.size);
 
