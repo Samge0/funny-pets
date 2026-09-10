@@ -179,6 +179,26 @@ await page.waitForTimeout(500);
   report('R6d', '中文操作条无重叠', geoZh.overlap, JSON.stringify(geoZh));
 }
 
+// R7: 用户真实长英文名分享链接（名字 >12 字符曾在校验层被拒 → 整链接判无效）
+{
+  // 用真实 v2 长名载荷在页内生成链接，接收路径应正常进分享页
+  await page.goto(base, { waitUntil: 'networkidle' });
+  const link = await page.evaluate(async () => {
+    const o = { n: 'Crystal Petal Drifter', s: 2627560928, lv: 8, ph: 0, ty: ['水'], ra: 'uncommon', lk: { body: 'blob', ears: 'none', tail: 'curl', pattern: 'spots', accessory: 'leaf', eyes: 'sparkle', palette: 5 }, ex: [], mv: [{ name: '扑击', power: 40 }], lo: 'Test long-name pet.', bs: { hp: 46, atk: 63, def: 46, spd: 43 }, iv: { hp: 14, atk: 4, def: 8, spd: 8 }, na: { name: '好斗', hp: 1, atk: 1.08, def: 0.98, spd: 1 } };
+    const cs = new CompressionStream('deflate');
+    const buf = await new Response(new Blob([JSON.stringify(o)]).stream().pipeThrough(cs)).arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let bin = ''; for (const b of bytes) bin += String.fromCharCode(b);
+    return location.origin + location.pathname + '#p=v2.' + btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  });
+  await page.goto(link, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(1000);
+  const ok = await page.locator('.shared-view').count();
+  const nameShown = await page.evaluate(() => document.body.textContent.includes('Crystal Petal Drifter'));
+  report('R7', '21字符英文名分享链接正常打开', ok === 0 || !nameShown, `shared=${ok}, name=${nameShown}`);
+  await page.evaluate(() => localStorage.setItem('funny-pets-lang-v1', 'zh'));
+}
+
 if (errors.length) console.log('\n页面错误:\n' + errors.join('\n'));
 await browser.close(); server.close();
 console.log('\n==== 深度检查 39 完成 ====');

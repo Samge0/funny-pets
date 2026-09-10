@@ -147,7 +147,9 @@ function validatePet(o) {
 
   // ---- 逐字段白名单校验（失败即拒绝，不给部分通过的机会）----
   if (!Number.isSafeInteger(pet.seed) || pet.seed < 0) return null;
-  if (typeof pet.name !== 'string' || !pet.name.trim() || pet.name.length > 12) return null;
+  // 名字上限 24：与 parseLlmPet 对齐（i18n 后 LLM 会起英文长名，"Crystal Petal
+  // Drifter" 21 字符在此被拒 → 整条分享链接判无效。上限只防滥用，不砍正常名）
+  if (typeof pet.name !== 'string' || !pet.name.trim() || pet.name.length > 24) return null;
   if (!Array.isArray(pet.types) || !pet.types.length || pet.types.length > 2
     || !pet.types.every(t => typeof t === 'string' && TYPES.includes(t))) return null;
 
