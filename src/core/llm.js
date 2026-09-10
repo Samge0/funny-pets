@@ -178,7 +178,33 @@ export async function generateShareCopy(cfg, pet, traitText, relation = '亲密�
   return text;
 }
 
-// 本地兜底文案（无 LLM 或失败时）：按性格模板拼装
+// ---- 重译：把已有精灵的名字/图鉴翻译成当前语言（历史存档语言迁移用）----
+// 严格 JSON 输出；失败抛错由调用方降级（无 LLM 时按钮不显示，此路径只在 llmReady 下可达）
+export async function retranslatePet(cfg, pet, signal) {
+  const res = await chatRequest(cfg, [
+    { role: 'system', content: langLine() + '你是本地化译者，只输出严格的 JSON，不输出 markdown 代码块或其他文字。' },
+    { role: 'user', content: `把这只宠物精灵的资料翻译成${langDirective()}（保留奇幻生物的命名风格；名字保持 2-6 个词以内、朗朗上口；图鉴描述保留原意与细节，长度相近）。严格输出 JSON：
+{"name": "翻译后的名字", "lore": "翻译后的图鉴描述"}
+
+待翻译资料：
+名字：${pet.name}
+属性：${(pet.types ?? []).join('/')}
+图鉴描述：${pet.lore ?? ''}` },
+  ], { temperature: 0.6, maxTokens: 300, signal });
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content ?? '';
+  const stripped = String(text).replace(/```(?:json)?/gi, '').trim();
+  const m = stripped.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('重译返回中没有 JSON');
+  let raw;
+  try { raw = JSON.parse(m[0]); } catch { throw new Error('重译 JSON 解析失败'); }
+  const name = String(raw.name ?? '').trim().slice(0, 24);
+  const lore = String(raw.lore ?? '').trim().slice(0, 160);
+  if (!name) throw new Error('重译返回缺少名字');
+  return { name, lore };
+}
+
+// 本地兜底文案（无 LLM 或失败时；按性格模板拼装）
 export function localShareCopy(pet, traitText, relation = '亲密伙伴') {
   const t = (pet.types ?? []).join('/');
   const openings = [

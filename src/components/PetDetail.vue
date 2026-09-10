@@ -15,6 +15,8 @@
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
           </svg>
         </button>
+        <!-- 重译：把这只精灵的名字/图鉴翻译成当前语言（解决"生成时是另一种语言"的历史存档） -->
+        <button class="detail-retranslate" v-if="llmReady" @click="retranslate" :disabled="retranslating" :title="t('把名字与图鉴描述重译为当前语言（需要 AI 已启用）')">{{ retranslating ? '🌐…' : '🌐 重译' }}</button>
         <div class="detail-top">
           <div class="detail-sprite"><Pet3D :key="modelTag" :pet="pet" :size="140" /></div>
           <div class="detail-meta">
@@ -84,8 +86,8 @@
 
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
-import { llmConfig, showToast, rarityInfo } from '../store.js';
-import { isLlmConfigured, chatWithSoul, generateShareCopy, localShareCopy } from '../core/llm.js';
+import { llmConfig, showToast, rarityInfo, persist, save } from '../store.js';
+import { isLlmConfigured, chatWithSoul, generateShareCopy, localShareCopy, retranslatePet } from '../core/llm.js';
 import { shareUrl, giftUrl } from '../core/sharePet.js';
 import { t, rarityName as rarityLabelOf, typeName as typeNameOf, relationTitle as relationTitleOf, traitLabel as traitLabelOf, locale } from '../core/i18n.js';
 import { chatOf, appendChat, maybeCompress, persistChat } from '../chat.js';
@@ -161,6 +163,36 @@ async function copyLink() {
 }
 // ---- 赠送：#g= 链接（好友领取克隆；自己不失去宠物；不携带任何 LLM 配置）----
 const gifting = ref(false);
+// ---- 重译：名字/图鉴 → 当前语言（历史存档语言迁移）----
+const retranslating = ref(false);
+async function retranslate() {
+  if (!props.pet || retranslating.value) return;
+  retranslating.value = true;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    const r = await retranslatePet(llmConfig, props.pet, ctrl.signal).finally(() => clearTimeout(timer));
+    // 写回存档：props.pet 可能是 withStats 的展示拷贝（dexList computed），
+    // 必须按 uid 定位 save.pets 里的原对象改字段，否则只改了拷贝不落盘
+    const target = save.pets.find(p => p.uid === props.pet.uid);
+    if (target) {
+      target.name = r.name;
+      if (r.lore) target.lore = r.lore;
+      // 展示层同步（当前打开的详情卡片立即刷新）
+      props.pet.name = r.name;
+      if (r.lore) props.pet.lore = r.lore;
+      persist();
+      showToast(t('已重译为当前语言'), 2400);
+    } else {
+      showToast(t('重译失败，请稍后再试'), 2600);
+    }
+  } catch (err) {
+    console.warn('重译失败', err);
+    showToast(t('重译失败，请稍后再试'), 2600);
+  } finally {
+    retranslating.value = false;
+  }
+}
 async function gift() {
   if (!props.pet || gifting.value) return;
   gifting.value = true;
@@ -313,6 +345,14 @@ function clearChat() {
   padding: 0;
 }
 .detail-share-link:hover { background: var(--primary, #5b7fd4); color: #fff; }
+.detail-retranslate {
+  position: absolute; top: 10px; right: 210px; height: 30px; padding: 0 10px;
+  border-radius: 15px; border: 1px solid rgba(76,175,136,0.5);
+  background: rgba(255,255,255,0.9); color: #2e7d5b;
+  font-size: 12px; cursor: pointer; white-space: nowrap;
+}
+.detail-retranslate:disabled { opacity: 0.6; cursor: wait; }
+.detail-retranslate:hover:not(:disabled) { background: #4caf88; color: #fff; }
 .detail-top { display: flex; gap: 16px; }
 .detail-sprite { flex-shrink: 0; }
 .detail-meta { flex: 1; min-width: 0; }
