@@ -107,6 +107,22 @@ report('FA-4', '滚动态下技能按钮可点击', !clickable, `clicked=${click
 // 整页无滚动
 report('FA-5', '溢出场景整页仍无滚动', before.docH > before.vh + 2, `doc=${before.docH} vh=${before.vh}`);
 
+// FA-6/7: 战报日志——新事件后 battle-scroll 与 log 双自动滚底（战斗页固定布局配套修复）
+await page.waitForTimeout(1500); // 等回合事件入列
+const logState = await page.evaluate(() => {
+  const sc = document.querySelector('.battle-scroll');
+  const log = document.querySelector('.battle-log');
+  return {
+    scAtBottom: sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 4,
+    logAtBottom: log.scrollTop + log.clientHeight >= log.scrollHeight - 4,
+    logH: Math.round(log.getBoundingClientRect().height),
+    rows: log.querySelectorAll('p').length,
+  };
+});
+report('FA-6', '新战报后 battle-scroll 自动回底', !logState.scAtBottom, `atBottom=${logState.scAtBottom}`);
+report('FA-7', 'log 内部滚底 + 高度不被压缩', !logState.logAtBottom || ![88, 108].includes(logState.logH),
+  `logAtBottom=${logState.logAtBottom}, h=${logState.logH}px, rows=${logState.rows}`);
+
 if (errors.length) console.log('页面错误:\n' + errors.join('\n'));
 await browser.close(); server.close();
 console.log('\n==== 深度检查 34 完成 ====');

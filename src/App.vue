@@ -26,10 +26,18 @@ const wild = ref(null);
 const battle = ref(null);
 const battleLog = ref([]);
 const logEl = ref(null);
+const battleScrollEl = ref(null);
 watch(battleLog, () => {
-  // 新纪录自动滚到底（战报区固定高度不推挤按钮）
-  nextTick(() => { if (logEl.value) logEl.value.scrollTop = logEl.value.scrollHeight; });
-}, { deep: false });
+  // 新纪录自动滚到底（战报区固定高度不推挤按钮）。
+  // deep:true：battleLog.push() 不换数组引用，浅监听不触发 → 自动滚底失效（嵌进
+  // battle-scroll 内滚容器后，新战报沉在底部用户看不到）
+  nextTick(() => {
+    if (logEl.value) logEl.value.scrollTop = logEl.value.scrollHeight;
+    // 外层 battle-scroll 同步滚到底：新战报出现时让最新记录+操作区都在视口内
+    // （用户手动上滑查看旧记录时会被拉回——战斗场景新信息优先，可接受）
+    if (battleScrollEl.value) battleScrollEl.value.scrollTop = battleScrollEl.value.scrollHeight;
+  });
+}, { deep: true });
 const battleBusy = ref(false);
 const showSwitchPanel = ref(false); // 战斗中主动换宠面板（非强制）
 const lastExpGain = ref(0);
@@ -828,7 +836,7 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
         </div>
 
         <!-- 竞技场固定（不随滚动出视口）；操作区/换宠面板/战报在内部滚动区里 -->
-        <div class="battle-scroll">
+        <div class="battle-scroll" ref="battleScrollEl">
         <!-- 操作区（优先级最高，不被战报推挤） -->
         <!-- 强制换宠 -->
         <div v-if="battle.ended === 'switch'" class="battle-actions force-switch">

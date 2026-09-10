@@ -194,6 +194,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 10px 16px; height: 108px; overflow-y: auto; margin-top: 12px;
   font-size: 13px; line-height: 1.8; color: var(--text);
+  flex-shrink: 0; /* 嵌在 battle-scroll（flex 列容器）里不被压缩到显示不全 */
 }
 .battle-log p { animation: fade-in 0.3s ease; }
 .battle-log p.hl { color: #c04a70; font-weight: 700; }
