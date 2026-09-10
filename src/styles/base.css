@@ -255,6 +255,22 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 .panel h3 { font-size: 15px; }
 .panel label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-dim); }
+/* ---- 设置页 GitHub 仓库链接 ---- */
+.github-link {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: 12px;
+  border: 1px solid var(--border); background: rgba(255, 255, 255, 0.85);
+  color: var(--text); text-decoration: none; font-size: 13.5px; font-weight: 600;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.github-link:hover {
+  transform: translateY(-2px); border-color: rgba(91, 127, 212, 0.55);
+  box-shadow: 0 8px 20px rgba(91, 127, 212, 0.18);
+}
+.github-link .gh-icon { color: #24292f; flex-shrink: 0; }
+.github-link .gh-text small { display: block; font-weight: 400; font-size: 11.5px; color: var(--text-dim); }
+.github-link .gh-arrow { margin-left: auto; color: var(--text-dim); font-size: 15px; transition: transform 0.15s ease; }
+.github-link:hover .gh-arrow { transform: translate(2px, -2px); color: var(--primary, #5b7fd4); }
 .panel label:has(input[type="checkbox"]) { flex-direction: row; align-items: center; gap: 8px; color: var(--text); }
 .panel input[type="text"], .panel input[type="password"], .panel input:not([type]) {
   border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px; font-size: 13px;
