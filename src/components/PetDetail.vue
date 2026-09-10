@@ -6,10 +6,10 @@
       <div class="detail-card">
         <button class="detail-close" @click="close">✕</button>
         <!-- 赠送：生成 #g= 链接，好友打开领取一只克隆（自己不失去宠物） -->
-        <button class="detail-gift" @click="gift" title="生成赠送链接——好友打开后可领取一只它的克隆（你不会失去它）">{{ gifting ? '🎁 生成中…' : '🎁 赠送' }}</button>
+        <button class="detail-gift" @click="gift" :title="t('生成赠送链接——好友打开后可领取一只它的克隆（你不会失去它）')">{{ gifting ? t('🎁 生成中…') : t('🎁 赠送') }}</button>
         <!-- 分享：生成 #p= 链接给好友观赏/挑战（查看者只读+可挑战，不能聊天） -->
-        <button class="detail-share" @click="share" title="生成 AI 分享文案+链接（复制后可直接发社交平台）" :disabled="sharing">{{ sharing ? '✨ 生成中…' : '📣 分享' }}</button>
-        <button class="detail-share-link" @click="copyLink" title="仅复制分享链接">
+        <button class="detail-share" @click="share" :title="t('生成 AI 分享文案+链接（复制后可直接发社交平台）')" :disabled="sharing">{{ sharing ? t('✨ 生成中…') : t('📣 分享') }}</button>
+        <button class="detail-share-link" @click="copyLink" :title="t('仅复制分享链接')">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
@@ -18,15 +18,15 @@
         <div class="detail-top">
           <div class="detail-sprite"><Pet3D :key="modelTag" :pet="pet" :size="140" /></div>
           <div class="detail-meta">
-            <h2>{{ pet.name }} <small v-if="pet.phase" class="phase-badge">{{ pet.phase }}阶</small></h2>
+            <h2>{{ pet.name }} <small v-if="pet.phase" class="phase-badge">{{ t('{n}阶', { n: pet.phase }) }}</small></h2>
             <div class="chips">
-              <i v-for="t in pet.types" :key="t" class="chip" :style="chipStyle(t)">{{ t }}</i>
-              <i class="chip rarity-chip" :style="{ background: rarityInfo(pet.rarity).color }">{{ rarityInfo(pet.rarity).name }}</i>
+              <i v-for="tp in pet.types" :key="tp" class="chip" :style="chipStyle(tp)">{{ typeLabel(tp) }}</i>
+              <i class="chip rarity-chip" :style="{ background: rarityInfo(pet.rarity).color }">{{ rarityLabel(pet.rarity) }}</i>
               <i class="chip lv-chip">Lv.{{ pet.level }}</i>
             </div>
-            <p class="soul-line">「{{ traitText.warmth }} · {{ traitText.energy }} · {{ traitText.pride }} · {{ traitText.curiosity }}」</p>
+            <p class="soul-line">「{{ traitLine }}」</p>
             <div class="bond-row">
-              <span class="bond-title">{{ soul.relation.title }}</span>
+              <span class="bond-title">{{ relationTitleOf(soul.relation.title) }}</span>
               <div class="bond-bar"><i :style="{ width: Math.round(soul.relation.affinity) + '%' }"></i></div>
               <span class="bond-num">{{ Math.round(soul.relation.affinity) }}</span>
             </div>
@@ -37,17 +37,17 @@
         </div>
 
         <div class="detail-tabs">
-          <button :class="{ active: tab === 'soul' }" @click="tab = 'soul'">💬 灵魂对话</button>
-          <button :class="{ active: tab === 'profile' }" @click="tab = 'profile'">🧠 记忆 <em>{{ soul.memory.profile.length }}</em></button>
-          <button :class="{ active: tab === 'story' }" @click="tab = 'story'">📖 经历 <em>{{ soul.memory.episodic.length }}</em></button>
+          <button :class="{ active: tab === 'soul' }" @click="tab = 'soul'">{{ t('💬 灵魂对话') }}</button>
+          <button :class="{ active: tab === 'profile' }" @click="tab = 'profile'">{{ t('🧠 记忆') }} <em>{{ soul.memory.profile.length }}</em></button>
+          <button :class="{ active: tab === 'story' }" @click="tab = 'story'">{{ t('📖 经历') }} <em>{{ soul.memory.episodic.length }}</em></button>
         </div>
 
         <!-- 灵魂对话 -->
         <div v-if="tab === 'soul'" class="chat-panel">
           <div class="chat-msgs" ref="msgsEl">
             <div v-if="!chat.messages.length" class="chat-empty">
-              <p>你们还没有聊过天。</p>
-              <p class="dim">它喜欢{{ soul.identity.love }}，讨厌{{ soul.identity.hate }}。聊聊这些它会更喜欢你。</p>
+              <p>{{ t('你们还没有聊过天。') }}</p>
+              <p class="dim">{{ t('它喜欢{love}，讨厌{hate}。聊聊这些它会更喜欢你。', { love: soul.identity.love, hate: soul.identity.hate }) }}</p>
             </div>
             <div v-for="(m, i) in chat.messages" :key="i" class="chat-msg" :class="m.role">
               <span class="bubble">{{ m.content }}</span>
@@ -55,24 +55,24 @@
             <div v-if="typing" class="chat-msg assistant"><span class="bubble typing">{{ typingText }}<i class="caret">▌</i></span></div>
           </div>
           <form class="chat-input" @submit.prevent="send">
-            <input v-model="draft" :placeholder="llmReady ? `和${pet.name}说点什么…` : '需在设置页启用 AI 后聊天'" :disabled="!llmReady || typing" />
-            <button type="submit" class="primary" :disabled="!llmReady || typing || !draft.trim()">发送</button>
+            <input v-model="draft" :placeholder="llmReady ? t('和{name}说点什么…', { name: pet.name }) : t('需在设置页启用 AI 后聊天')" :disabled="!llmReady || typing" />
+            <button type="submit" class="primary" :disabled="!llmReady || typing || !draft.trim()">{{ t('发送') }}</button>
           </form>
           <div class="chat-foot">
-            <small>对话 {{ soul.relation.chats }} 次 · 每 20 条自动沉淀为长期记忆</small>
-            <button class="ghost sm" @click="clearChat">清空记录</button>
+            <small>{{ t('对话 {n} 次 · 每 20 条自动沉淀为长期记忆', { n: soul.relation.chats }) }}</small>
+            <button class="ghost sm" @click="clearChat">{{ t('清空记录') }}</button>
           </div>
         </div>
 
         <!-- 长期记忆 -->
         <div v-else-if="tab === 'profile'" class="mem-panel">
-          <div v-if="!soul.memory.profile.length" class="empty">还没有沉淀出长期记忆，多和它聊天吧。</div>
+          <div v-if="!soul.memory.profile.length" class="empty">{{ t('还没有沉淀出长期记忆，多和它聊天吧。') }}</div>
           <div v-for="(f, i) in soul.memory.profile" :key="i" class="mem-item">💡 {{ f }}</div>
         </div>
 
         <!-- 经历 -->
         <div v-else class="mem-panel">
-          <div v-if="!soul.memory.episodic.length" class="empty">还没有值得记录的经历。</div>
+          <div v-if="!soul.memory.episodic.length" class="empty">{{ t('还没有值得记录的经历。') }}</div>
           <div v-for="(e, i) in [...soul.memory.episodic].reverse()" :key="i" class="mem-item story">
             <small>{{ fmtTime(e.t) }}</small> {{ e.text }}
           </div>
@@ -87,6 +87,7 @@ import { ref, computed, watch, nextTick } from 'vue';
 import { llmConfig, showToast, rarityInfo } from '../store.js';
 import { isLlmConfigured, chatWithSoul, generateShareCopy, localShareCopy } from '../core/llm.js';
 import { shareUrl, giftUrl } from '../core/sharePet.js';
+import { t, rarityName as rarityLabelOf, typeName as typeNameOf, relationTitle as relationTitleOf, traitLabel as traitLabelOf, locale } from '../core/i18n.js';
 import { chatOf, appendChat, maybeCompress, persistChat } from '../chat.js';
 import { statsAt } from '../core/evolve.js';
 import { ensureSoul, traitLabels, updateSoul, driftTraits, addProfileFact, touchRelation } from '../core/soul.js';
@@ -115,6 +116,12 @@ const soul = computed(() => (props.pet ? ensureSoul(props.pet) : null));
 const chat = computed(() => (props.pet ? chatOf(props.pet.uid) : { messages: [], total: 0 }));
 const llmReady = computed(() => isLlmConfigured(llmConfig) && llmConfig.enabled);
 const traitText = computed(() => traitLabels(soul.value?.traits ?? { warmth: 0, energy: 0, pride: 0, curiosity: 0 }));
+// 显示层：四维性格词按当前语言映射（zh 保持中文词）
+const traitLine = computed(() => {
+  const tt = traitText.value;
+  const f = (w) => (locale.value === 'zh' || locale.value === 'zh-TW') ? w : (traitLabelOf(w) ?? w);
+  return [f(tt.warmth), f(tt.energy), f(tt.pride), f(tt.curiosity)].join(' · ');
+});
 
 const s = computed(() => (props.pet ? statsAt(props.pet, props.pet.level) : { hp: 0, atk: 0, def: 0, spd: 0 }));
 const maxHp = computed(() => s.value.hp);
@@ -126,7 +133,9 @@ function ensure(p) {
   return ensureSoul(p);
 }
 
-function chipStyle(t) { return { background: TYPE_COLORS[t] ?? '#9fa19f' }; }
+function chipStyle(tp) { return { background: TYPE_COLORS[tp] ?? '#9fa19f' }; }
+const typeLabel = (tp) => { void locale.value; return typeNameOf(tp); };
+const rarityLabel = (r) => { void locale.value; return rarityLabelOf(r); };
 function close() { emit('close'); }
 
 // ---- 分享双按钮：📣 分享 = LLM 生成社交文案+链接；🔗图标 = 仅复制链接 ----
@@ -141,14 +150,14 @@ function legacyCopy(text, done) {
   const ta = document.createElement('textarea');
   ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
   document.body.appendChild(ta); ta.select();
-  try { document.execCommand('copy'); done(); } catch { showToast('复制失败，请手动复制地址栏', 2600); }
+  try { document.execCommand('copy'); done(); } catch { showToast(t('复制失败，请手动复制地址栏'), 2600); }
   ta.remove();
 }
 // 图标按钮：仅复制链接
 async function copyLink() {
   if (!props.pet) return;
   const url = await shareUrl(props.pet);
-  writeClipboard(url, () => showToast('分享链接已复制！好友打开即可观赏或挑战', 3200));
+  writeClipboard(url, () => showToast(t('分享链接已复制！好友打开即可观赏或挑战'), 3200));
 }
 // ---- 赠送：#g= 链接（好友领取克隆；自己不失去宠物；不携带任何 LLM 配置）----
 const gifting = ref(false);
@@ -157,9 +166,9 @@ async function gift() {
   gifting.value = true;
   try {
     const url = await giftUrl(props.pet);
-    const line1 = `我把「${props.pet.name}」赠送给你啦！纯前端小礼物🎁`;
-    const line2 = '打开链接领取一只它的克隆（我的原宠还在我身边，放心）——它的灵魂档案和 AI 聊天会用你自己的配置重新开始。';
-    writeClipboard(`${line1}\n${line2}\n${url}`, () => showToast('赠送链接已复制！发给好友即可领取（你不会失去它）', 3600));
+    const line1 = t('我把「{name}」赠送给你啦！纯前端小礼物🎁', { name: props.pet.name });
+    const line2 = t('打开链接领取一只它的克隆（我的原宠还在我身边，放心）——它的灵魂档案和 AI 聊天会用你自己的配置重新开始。');
+    writeClipboard(`${line1}\n${line2}\n${url}`, () => showToast(t('赠送链接已复制！发给好友即可领取（你不会失去它）'), 3600));
   } finally {
     gifting.value = false;
   }
@@ -172,9 +181,9 @@ async function share() {
     const url = await shareUrl(props.pet);
     // traitLabels 返回四维对象——拼成一句人话给 LLM/模板用
     const tt = traitText.value;
-    const traits = tt ? `${tt.warmth}、${tt.energy}、${tt.pride}、${tt.curiosity}` : '活泼可爱';
+    const traits = tt ? [tt.warmth, tt.energy, tt.pride, tt.curiosity].map(w => traitLabelOf(w) ?? w).join(', ') : t('活泼可爱');
     const soulCur = soul.value;
-    const relation = soulCur ? `好感 ${Math.round(soulCur.relation.affinity)}/100（${soulCur.relation.title}）` : '亲密伙伴';
+    const relation = soulCur ? `${Math.round(soulCur.relation.affinity)}/100 (${relationTitleOf(soulCur.relation.title)})` : t('亲密伙伴');
     let copy = '';
     try {
       // 12s 超时：慢接口不让用户干等
@@ -184,9 +193,9 @@ async function share() {
     } catch (err) {
       console.warn('LLM 分享文案失败，降级本地模板', err);
       copy = localShareCopy(props.pet, traits, relation);
-      if (llmReady.value) showToast('AI 文案生成失败，已用模板文案', 2600);
+      if (llmReady.value) showToast(t('AI 文案生成失败，已用模板文案'), 2600);
     }
-    writeClipboard(`${copy}\n${url}`, () => showToast('分享文案+链接已复制，去社交平台粘贴吧！', 3200));
+    writeClipboard(`${copy}\n${url}`, () => showToast(t('分享文案+链接已复制，去社交平台粘贴吧！'), 3200));
   } finally {
     sharing.value = false;
   }
@@ -241,7 +250,7 @@ async function send() {
     maybeCompress(uid, llmConfig, petData, ensureSoul(petData));
   } catch (err) {
     console.warn('聊天失败', err);
-    showToast(`聊天失败：${err.message}`);
+    showToast(t('聊天失败：{err}', { err: err.message }));
   } finally {
     typing.value = false;
     typingText.value = '';
@@ -250,11 +259,11 @@ async function send() {
 
 function clearChat() {
   if (!props.pet) return;
-  if (!confirm(`清空与 ${props.pet.name} 的全部聊天记录？（灵魂档案与长期记忆保留）`)) return;
+  if (!confirm(t('清空与 {name} 的全部聊天记录？（灵魂档案与长期记忆保留）', { name: props.pet.name }))) return;
   const c = chatOf(props.pet.uid);
   c.messages = []; c.total = 0; c.compressedAt = 0;
   persistChat(); // 立即落盘（此前漏写：仅改缓存，刷新后聊天记录复活）
-  showToast('聊天记录已清空（长期记忆保留）');
+  showToast(t('聊天记录已清空（长期记忆保留）'));
 }
 </script>
 

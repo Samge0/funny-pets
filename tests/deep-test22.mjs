@@ -18,7 +18,7 @@ const server = createServer((req, res) => {
 });
 await new Promise(r => server.listen(4235, r));
 const browser = await chromium.launch({});
-const page = await browser.newPage();
+const page = await browser.newPage({ locale: 'zh-CN' });
 const errs = [];
 page.on('pageerror', e => errs.push(String(e)));
 

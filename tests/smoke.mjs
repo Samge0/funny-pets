@@ -30,7 +30,7 @@ console.log('static server on :' + PORT);
 
 const channel = process.env.PLAYWRIGHT_CHANNEL;
 const browser = await chromium.launch(channel ? { channel } : {});
-const page = await browser.newPage({ viewport: { width: 1180, height: 900 } });
+const page = await browser.newPage({ locale: 'zh-CN', viewport: { width: 1180, height: 900 } });
 
 const errors = [];
 page.on('pageerror', e => errors.push(`pageerror: ${e.message}`));

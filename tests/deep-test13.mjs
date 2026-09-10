@@ -20,7 +20,7 @@ const server = createServer((req, res) => {
 await new Promise(r => server.listen(4207, r));
 
 const browser = await chromium.launch({});
-const page = await browser.newPage({ viewport: { width: 1180, height: 900 } });
+const page = await browser.newPage({ locale: 'zh-CN', viewport: { width: 1180, height: 900 } });
 const errors = [];
 page.on('pageerror', e => errors.push(`pageerror: ${e.message}`));
 page.on('dialog', d => d.accept().catch(() => {}));

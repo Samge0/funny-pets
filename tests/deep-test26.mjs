@@ -43,7 +43,7 @@ await new Promise(r => srv.listen(0, '127.0.0.1', r));
 const mockPort = srv.address().port;
 
 const browser = await chromium.launch({});
-const page = await browser.newPage();
+const page = await browser.newPage({ locale: 'zh-CN' });
 await page.goto(`http://127.0.0.1:${appPort}/funny-pets/app/`, { waitUntil: 'networkidle' });
 // 配置 LLM
 await page.evaluate(p => {

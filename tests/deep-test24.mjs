@@ -39,7 +39,7 @@ await new Promise(r => sseApp.listen(0, '127.0.0.1', r));
 const ssePort = sseApp.address().port;
 
 const browser = await chromium.launch({});
-const page = await browser.newPage();
+const page = await browser.newPage({ locale: 'zh-CN' });
 const errs = [];
 page.on('pageerror', e => errs.push(String(e).slice(0, 200)));
 await page.goto(`http://127.0.0.1:${port}/funny-pets/app/`, { waitUntil: 'networkidle' });

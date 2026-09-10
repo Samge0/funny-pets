@@ -1,6 +1,8 @@
 // 存档：localStorage + 版本号 + 严格 schema 校验。
 // v2：level 上限不变，phase 允许 0-2，加收 collection 元数据。
 
+import { t } from './core/i18n.js';
+
 const SAVE_KEY = 'funny-pets-save-v1';
 const LLM_KEY = 'funny-pets-llm-v1';
 
@@ -65,7 +67,7 @@ export function readSave(notify) {
     return validateSave(value);
   } catch (error) {
     console.warn('读取存档失败', error);
-    notify?.('存档读取失败，已重置。如需找回请勿覆盖导出文件。');
+    notify?.(t('存档读取失败，已重置。如需找回请勿覆盖导出文件。'));
     return emptySave();
   }
 }
@@ -75,7 +77,7 @@ export function writeSave(save, notify) {
     localStorage.setItem(SAVE_KEY, JSON.stringify(save));
   } catch (error) {
     console.warn('写入存档失败', error);
-    notify?.('存档写入失败（存储空间不足或隐私模式）');
+    notify?.(t('存档写入失败（存储空间不足或隐私模式）'));
   }
 }
 
@@ -119,7 +121,7 @@ export function exportSaveText(save, extras = null) {
 
 export function importSaveText(text) {
   const parsed = JSON.parse(text);
-  if (parsed?.magic !== EXPORT_MAGIC) throw new Error('不是有效的奇幻萌宠存档文件');
+  if (parsed?.magic !== EXPORT_MAGIC) throw new Error(t('不是有效的奇幻萌宠存档文件'));
   return {
     save: validateSave(parsed.data),
     souls: parsed.souls && typeof parsed.souls === 'object' ? parsed.souls : null,

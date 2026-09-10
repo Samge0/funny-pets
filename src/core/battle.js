@@ -1,8 +1,10 @@
 // 回合制战斗 v2：宝可梦式伤害公式、加大 HP 池、状态 buff、命中稳定性。
 // 战斗返回逐步事件，动画由 UI 层根据事件播放。
+// 战报文案走 t()（i18n）：数据层技能名保持中文规范值，显示时经 moveName 映射。
 
 import { effectivenessAgainst } from '../data/types.js';
 import { statsAt } from './evolve.js';
+import { t, moveName } from './i18n.js';
 
 const EFFECTS = {
   atkup: { label: '攻击上升', stat: 'atk', mult: 1.35 },
@@ -55,9 +57,10 @@ function pickWildMove(wild) {
 function execMove(src, dst, move, isPlayer, events) {
   // 防御式兜底：任何来源的招式都必须有 type（克制表查表依赖）
   if (!move.type) move.type = src.types[0];
+  const mv = moveName(move.name); // 显示名（语言映射）
   // 命中判定（变化技必中）
   if (move.power && Math.random() > ACCURACY) {
-    events.push({ type: 'miss', side: isPlayer ? 'player' : 'wild', text: `${src.name}的${move.name}没有命中…` });
+    events.push({ type: 'miss', side: isPlayer ? 'player' : 'wild', text: t('{name}的{move}没有命中…', { name: src.name, move: mv }) });
     return;
   }
   if (move.power) {
@@ -65,35 +68,40 @@ function execMove(src, dst, move, isPlayer, events) {
     // 免疫（eff=0）：完全无效——0 伤害、不扣血（此前 Math.max(1,...) 保底让免疫也掉 1 HP，
     // 与战报文案"没有效果"矛盾，免疫形同虚设）
     if (r.eff === 0) {
-      events.push({ type: 'damage', side: isPlayer ? 'player' : 'wild', damage: 0, eff: 0, crit: false, moveName: move.name, text: `这对${dst.name}没有效果…` });
+      events.push({ type: 'damage', side: isPlayer ? 'player' : 'wild', damage: 0, eff: 0, crit: false, moveName: move.name, text: t('这对{name}没有效果…', { name: dst.name }) });
       return;
     }
     dst.hp = Math.max(0, dst.hp - r.damage);
-    let text = `${isPlayer ? '你的' : '野生的'}${src.name}使出了${move.name}，${r.damage} 点伤害`;
-    if (r.crit) text = `${isPlayer ? '你的' : '野生的'}${src.name}使出了${move.name}！会心一击 ${r.damage} 点！`;
-    if (r.eff >= 2) text += '效果超级拔群！';
-    else if (r.eff > 1) text += '效果拔群！';
-    else if (r.eff < 1 && r.eff > 0) text += '效果不太理想…';
+    let text = isPlayer
+      ? t('你的{name}使出了{move}，{n} 点伤害', { name: src.name, move: mv, n: r.damage })
+      : t('野生的{name}使出了{move}，{n} 点伤害', { name: src.name, move: mv, n: r.damage });
+    if (r.crit) text = isPlayer
+      ? t('你的{name}使出了{move}！会心一击 {n} 点！', { name: src.name, move: mv, n: r.damage })
+      : t('野生的{name}使出了{move}！会心一击 {n} 点！', { name: src.name, move: mv, n: r.damage });
+    if (r.eff >= 2) text += t('效果超级拔群！');
+    else if (r.eff > 1) text += t('效果拔群！');
+    else if (r.eff < 1 && r.eff > 0) text += t('效果不太理想…');
     events.push({ type: 'damage', side: isPlayer ? 'player' : 'wild', damage: r.damage, eff: r.eff, crit: r.crit, moveName: move.name, text });
     if (dst.hp <= 0) {
-      events.push({ type: 'faint', side: isPlayer ? 'wild' : 'player', text: `${dst.name}倒下了！` });
+      events.push({ type: 'faint', side: isPlayer ? 'wild' : 'player', text: t('{name}倒下了！', { name: dst.name }) });
     }
   } else {
-    const eff = EFFECTS[move.effect] ?? EFFECTS.atkup;
-    if (eff.heal) {
+    const effRaw = EFFECTS[move.effect] ?? EFFECTS.atkup;
+    if (effRaw.heal) {
       const max = statsAt(src, src.level).hp;
-      const healed = Math.round(max * eff.heal);
+      const healed = Math.round(max * effRaw.heal);
       src.hp = Math.min(max, src.hp + healed);
-      events.push({ type: 'heal', side: isPlayer ? 'player' : 'wild', amount: healed, text: `${src.name}使用${move.name}，回复了 ${healed} 点体力` });
-    } else if (eff.debuff) {
+      events.push({ type: 'heal', side: isPlayer ? 'player' : 'wild', amount: healed, text: t('{name}使用{move}，回复了 {n} 点体力', { name: src.name, move: mv, n: healed }) });
+    } else if (effRaw.debuff) {
       // 下降类效果（瞪眼/毒雾/怨念等）：作用于对手，而不是给自己挂 debuff
       dst.boosts = dst.boosts ?? {};
-      dst.boosts[eff.stat] = (dst.boosts[eff.stat] ?? 1) * eff.mult;
-      events.push({ type: 'buff', side: isPlayer ? 'player' : 'wild', text: `${src.name}使用${move.name}，${dst.name}的${eff.stat === 'atk' ? '攻击' : eff.stat === 'def' ? '防御' : '速度'}下降了！` });
+      dst.boosts[effRaw.stat] = (dst.boosts[effRaw.stat] ?? 1) * effRaw.mult;
+      const stat = t(effRaw.stat === 'atk' ? '攻击' : effRaw.stat === 'def' ? '防御' : '速度');
+      events.push({ type: 'buff', side: isPlayer ? 'player' : 'wild', text: t('{name}使用{move}，{target}的{stat}下降了！', { name: src.name, move: mv, target: dst.name, stat }) });
     } else {
       src.boosts = src.boosts ?? {};
-      src.boosts[eff.stat] = (src.boosts[eff.stat] ?? 1) * eff.mult;
-      events.push({ type: 'buff', side: isPlayer ? 'player' : 'wild', text: `${src.name}使用${move.name}，${eff.label}！` });
+      src.boosts[effRaw.stat] = (src.boosts[effRaw.stat] ?? 1) * effRaw.mult;
+      events.push({ type: 'buff', side: isPlayer ? 'player' : 'wild', text: t('{name}使用{move}，{effect}！', { name: src.name, move: mv, effect: t(effRaw.label) }) });
     }
   }
 }
@@ -132,7 +140,7 @@ export function battleTurn(state, playerAction) {
     }
   } else if (playerAction.type === 'switch') {
     const next = state.party[playerAction.partyIndex];
-    events.push({ type: 'switch', side: 'player', text: `换上了${next.name}！` });
+    events.push({ type: 'switch', side: 'player', text: t('换上了{name}！', { name: next.name }) });
     state.active = next;
     state.ended = null; // 强制换宠完成，恢复战斗
     // 野生趁机攻击（换上来的精灵先挨打——符合宝可梦规则：换人后对方行动）
@@ -140,15 +148,15 @@ export function battleTurn(state, playerAction) {
     if (state.active.hp <= 0) {
       const another = state.party?.find(p => p.uid !== state.active.uid && p.hp > 0);
       state.ended = another ? 'switch' : 'lose';
-      events.push({ type: 'status', text: another ? `${state.active.name} 也倒下了！` : `${state.active.name} 倒下了，无宠可用…` });
+      events.push({ type: 'status', text: another ? t('{name} 也倒下了！', { name: state.active.name }) : t('{name} 倒下了，无宠可用…', { name: state.active.name }) });
     }
   } else if (playerAction.type === 'ball') {
     const p = catchChance(wild);
     if (Math.random() < p) {
       state.ended = 'caught';
-      events.push({ type: 'ball', caught: true, text: `精灵球晃了三下——成功捕捉了${wild.name}！！` });
+      events.push({ type: 'ball', caught: true, text: t('精灵球晃了三下——成功捕捉了{name}！！', { name: wild.name }) });
     } else {
-      events.push({ type: 'ball', caught: false, text: `${wild.name}从球里挣脱出来了！` });
+      events.push({ type: 'ball', caught: false, text: t('{name}从球里挣脱出来了！', { name: wild.name }) });
       execMove(wild, active, pickWildMove(wild), false, events);
       if (active.hp <= 0) {
         const next = state.party?.find(p => p.uid !== active.uid && p.hp > 0);
@@ -158,9 +166,9 @@ export function battleTurn(state, playerAction) {
   } else if (playerAction.type === 'run') {
     if (Math.random() < 0.75) {
       state.ended = 'ran';
-      events.push({ type: 'run', text: '成功逃走了！' });
+      events.push({ type: 'run', text: t('成功逃走了！') });
     } else {
-      events.push({ type: 'run', text: '没能逃掉！' });
+      events.push({ type: 'run', text: t('没能逃掉！') });
       execMove(wild, active, pickWildMove(wild), false, events);
       if (active.hp <= 0) {
         const next = state.party?.find(p => p.uid !== active.uid && p.hp > 0);

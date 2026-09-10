@@ -28,7 +28,7 @@ await new Promise(r => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}/funny-pets/app/`;
 
 const browser = await chromium.launch({});
-const context = await browser.newContext({ viewport: { width: 1180, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
+const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1180, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
 const page = await context.newPage();
 const errors = [];
 page.on('pageerror', e => errors.push(`pageerror: ${e.message}`));
@@ -87,7 +87,7 @@ await page.goto(base, { waitUntil: 'networkidle' });
 
 // ============ G2: 领取克隆（独立 context 模拟领取人——localStorage 隔离） ============
 {
-  const rctx = await browser.newContext({ viewport: { width: 1180, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
+  const rctx = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1180, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
   const receiver = await rctx.newPage();
   const rErrors = [];
   receiver.on('pageerror', e => rErrors.push(e.message));

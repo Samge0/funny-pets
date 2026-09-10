@@ -5,43 +5,43 @@
   <Transition name="devour">
     <div v-if="offer.show" class="devour-mask" @click.self="confirmAll">
       <div class="devour-card">
-        <div class="devour-banner">🍖 吞噬时刻！</div>
-        <p class="devour-sub">{{ offer.petName }} 可以吞噬 {{ offer.defeatedName }} 的部分特征——选择你要的战利品：</p>
+        <div class="devour-banner">{{ t('🍖 吞噬时刻！') }}</div>
+        <p class="devour-sub">{{ t('{pet} 可以吞噬 {foe} 的部分特征——选择你要的战利品：', { pet: offer.petName, foe: offer.defeatedName }) }}</p>
 
         <div class="devour-body">
           <!-- 左：实时预览（跟随勾选即时变化） -->
           <div class="preview-pane">
             <div class="live-stage"><Pet3D :key="previewTag" :pet="previewPet" :size="168" /></div>
-            <p class="live-hint">{{ changedParts.length ? changedParts.join(' + ') : '勾选部件即时预览' }}</p>
-            <p class="live-sub">👆 可拖动旋转查看</p>
+            <p class="live-hint">{{ changedParts.length ? changedParts.join(' + ') : t('勾选部件即时预览') }}</p>
+            <p class="live-sub">{{ t('👆 可拖动旋转查看') }}</p>
           </div>
 
           <!-- 右：候选列表（部件在前：与左侧预览联动最直观；技能在后） -->
           <div class="choices-pane">
             <!-- 部件候选 -->
             <div v-if="offer.parts.length" class="devour-section">
-              <h4>🎨 外观部件（勾选实时预览）</h4>
+              <h4>{{ t('🎨 外观部件（勾选实时预览）') }}</h4>
               <div v-for="(pp, pi) in offer.parts" :key="pp.part + pp.theirs" class="devour-item" :class="{ picked: takePart[pi], 'devour-item-body': pp.part === 'body' }">
                 <label class="devour-take">
                   <input type="checkbox" v-model="takePart[pi]" />
                   <span class="part-name">{{ partLabel(pp.part) }}</span>
-                  <span v-if="pp.part === 'body'" class="body-tag">🦴 换骨架：头身手脚形态全变</span>
+                  <span v-if="pp.part === 'body'" class="body-tag">{{ t('🦴 换骨架：头身手脚形态全变') }}</span>
                   <span class="part-mode-tag">{{ partMode(pp, pi) }}</span>
                   <span class="part-preview">
-                    <img class="preview-img" :src="previewSvg(pp.part, offer.currentLook[pp.part])" alt="吞前" width="48" height="48" />
+                    <img class="preview-img" :src="previewSvg(pp.part, offer.currentLook[pp.part])" width="48" height="48" />
                     <span class="preview-arrow">→</span>
-                    <img class="preview-img after" :src="previewSvg(pp.part, pp.theirs)" alt="吞后" width="48" height="48" />
+                    <img class="preview-img after" :src="previewSvg(pp.part, pp.theirs)" width="48" height="48" />
                   </span>
                 </label>
                 <!-- 入手方式（已有部件时可选叠加/替换；空槽自动长出；body 固定替换） -->
                 <div class="devour-how part-how" v-if="takePart[pi] && canChooseHow(pp)">
                   <label class="how-opt">
                     <input type="radio" :name="'pthow-' + pi" value="stack" v-model="partHow[pi]" />
-                    ➕ 叠加（保留原{{ partLabel(pp.part)}}，多长一件）
+                    {{ t('➕ 叠加（保留原{part}，多长一件）', { part: partLabel(pp.part) }) }}
                   </label>
                   <label class="how-opt">
                     <input type="radio" :name="'pthow-' + pi" value="replace" v-model="partHow[pi]" />
-                    🔄 替换（原{{ partLabel(pp.part) }}换成它）
+                    {{ t('🔄 替换（原{part}换成它）', { part: partLabel(pp.part) }) }}
                   </label>
                 </div>
               </div>
@@ -49,21 +49,21 @@
 
             <!-- 技能候选 -->
             <div v-if="offer.moves.length" class="devour-section">
-              <h4>⚔️ 技能</h4>
+              <h4>{{ t('⚔️ 技能') }}</h4>
               <div v-for="(mv, mi) in offer.moves" :key="mv.name" class="devour-item">
                 <label class="devour-take">
                   <input type="checkbox" v-model="takeMove[mi]" />
-                  <span class="mv-name" :style="{ '--type-color': typeColor(mv.type) }">{{ mv.name }}</span>
-                  <small>{{ mv.power ? `威力 ${mv.power}` : '变化技' }}</small>
+                  <span class="mv-name" :style="{ '--type-color': typeColor(mv.type) }">{{ moveNameI18n(mv.name) }}</span>
+                  <small>{{ mv.power ? t('威力 {n}', { n: mv.power }) : t('变化技') }}</small>
                 </label>
                 <div class="devour-how" v-if="takeMove[mi]">
                   <label class="how-opt">
                     <input type="radio" :name="'mvhow-' + mi" :value="'new'" v-model="moveHow[mi]" />
-                    新学会（当前 {{ offer.currentMoves.length }} 个）
+                    {{ t('新学会（当前 {n} 个）', { n: offer.currentMoves.length }) }}
                   </label>
                   <label class="how-opt" v-for="(cm, ci) in offer.currentMoves" :key="ci">
                     <input type="radio" :name="'mvhow-' + mi" :value="ci" v-model="moveHow[mi]" />
-                    替换「{{ cm.name }}」
+                    {{ t('替换「{name}」', { name: moveNameI18n(cm.name) }) }}
                   </label>
                 </div>
               </div>
@@ -72,8 +72,8 @@
         </div>
 
         <div class="devour-actions">
-          <button class="ghost" @click="confirmAll">跳过</button>
-          <button class="primary" @click="confirmAll">确认吞噬</button>
+          <button class="ghost" @click="confirmAll">{{ t('跳过') }}</button>
+          <button class="primary" @click="confirmAll">{{ t('确认吞噬') }}</button>
         </div>
       </div>
     </div>
@@ -83,9 +83,10 @@
 <script setup>
 import { reactive, watch, computed } from 'vue';
 import { offer, resolveOffer } from '../store.js';
-import { PART_LABELS, LOOK_TO_SKELETON } from '../core/evolve.js';
+import { LOOK_TO_SKELETON } from '../core/evolve.js';
 import { TYPE_COLORS } from '../data/types.js';
 import { petSvg } from '../core/sprites.js';
+import { t, partLabel as partLabelI18n, valueLabel as valueLabelI18n, moveName as moveNameI18n } from '../core/i18n.js';
 import Pet3D from './Pet3D.vue';
 
 const takeMove = reactive([]);
@@ -105,34 +106,28 @@ const isEmptySlot = pp => {
   return cur == null || cur === 'none' || cur === '';
 };
 
-const partLabel = p => PART_LABELS[p] ?? p;
-const typeColor = t => TYPE_COLORS[t] ?? '#9fa19f';
+const partLabel = p => (partLabelI18n(p) !== p ? partLabelI18n(p) : p);
+const typeColor = tp => TYPE_COLORS[tp] ?? '#9fa19f';
 
-const VALUE_LABELS = {
-  none: '无', round: '圆', pointy: '尖', long: '长', fin: '鳍',
-  stub: '短尾', curl: '卷尾', fluff: '绒尾', spark: '电尾',
-  flower: '小花', leaf: '叶芽', horn: '小角', gem: '额晶',
-  spots: '斑点', stripe: '条纹', belly: '肚皮',
-  dot: '豆豆眼', sleepy: '眯眯眼', sparkle: '星星眼',
-  round_body: '圆滚滚', pear: '梨形', tall: '瘦长', blob: '软团', drop: '水滴',
-};
+// 部件值显示名走 i18n（zh 词典收录原表同值；en/ja 翻译）
 function valueLabel(part, v) {
-  if (v == null || v === 'none') return '无';
-  if (part === 'body') return VALUE_LABELS[v + '_body'] ?? v;
-  return VALUE_LABELS[v] ?? v;
+  if (v == null || v === 'none') return t('无');
+  if (part === 'body') return valueLabelI18n(v + '_body') !== v + '_body' ? valueLabelI18n(v + '_body') : (valueLabelI18n(v) !== v ? valueLabelI18n(v) : v);
+  const m = valueLabelI18n(v);
+  return m !== v ? m : v;
 }
 // 部件入手模式：空槽=长出（新增）/ body=体型替换 / pattern|eyes=单值部件强制换上 / 其余=可叠加或替换（用户选）
 const canChooseHow = pp => pp.part !== 'body' && pp.part !== 'pattern' && pp.part !== 'eyes' && !isEmptySlot(pp);
 function partMode(pp, pi) {
-  if (pp.part === 'body') return '体型替换';
-  if (isEmptySlot(pp)) return '🌱 长出';
-  if (pp.part === 'pattern' || pp.part === 'eyes') return '🔄 换上';
-  return partHow[pi] === 'replace' ? '🔄 替换' : '➕ 叠加';
+  if (pp.part === 'body') return t('体型替换');
+  if (isEmptySlot(pp)) return t('🌱 长出');
+  if (pp.part === 'pattern' || pp.part === 'eyes') return t('🔄 换上');
+  return partHow[pi] === 'replace' ? t('🔄 替换') : t('➕ 叠加');
 }
 
 function previewSvg(part, value) {
   const look = { ...offer.currentLook, [part]: value };
-  const pet = { seed: offer.seed ?? 1, name: '预览', types: offer.petTypes ?? ['一般'], look };
+  const pet = { seed: offer.seed ?? 1, name: 'preview', types: offer.petTypes ?? ['一般'], look };
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(petSvg(pet, 48));
 }
 
@@ -165,7 +160,7 @@ const previewPet = computed(() => {
   const extraFinal = [...seen.values()];
   const pet = {
     seed: offer.seed ?? 1,
-    name: offer.petName || '预览',
+    name: offer.petName || 'preview',
     types: offer.petTypes ?? ['一般'],
     look,
     extraParts: extraFinal,
@@ -180,7 +175,7 @@ const previewPet = computed(() => {
 });
 const previewTag = computed(() => JSON.stringify(previewPet.value.look) + '|' + JSON.stringify(previewPet.value.extraParts ?? []));
 const changedParts = computed(() =>
-  offer.parts.filter((pp, pi) => takePart[pi]).map(pp => `${partLabel(pp.part)}${partMode(pp, offer.parts.indexOf(pp)) === '➕ 叠加' ? '叠加' : partMode(pp, offer.parts.indexOf(pp)) === '🔄 替换' ? '换上' : '→'}${valueLabel(pp.part, pp.theirs)}`)
+  offer.parts.filter((pp, pi) => takePart[pi]).map(pp => `${partLabel(pp.part)}${partMode(pp, offer.parts.indexOf(pp)) === t('➕ 叠加') ? t('叠加') : partMode(pp, offer.parts.indexOf(pp)) === t('🔄 替换') ? t('🔄 换上') : '→'}${valueLabel(pp.part, pp.theirs)}`)
 );
 
 // 测试探针：暴露预览宠数据（E2E 验证骨架不漂移用；生产无副作用）

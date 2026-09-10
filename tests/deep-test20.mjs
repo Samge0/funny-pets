@@ -20,7 +20,7 @@ const server = createServer((req, res) => {
 });
 await new Promise(r => server.listen(4233, r));
 const browser = await chromium.launch({});
-const page = await browser.newPage();
+const page = await browser.newPage({ locale: 'zh-CN' });
 const errs = [];
 page.on('pageerror', e => errs.push(String(e)));
 await page.goto('http://127.0.0.1:4233/funny-pets/app/', { waitUntil: 'networkidle' });

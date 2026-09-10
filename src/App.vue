@@ -19,7 +19,7 @@ import PetDetail from './components/PetDetail.vue';
 import DevourChoice from './components/DevourChoice.vue';
 import GlobalToast from './components/GlobalToast.vue';
 import { readSharedFromHash, readGiftFromHash } from './core/sharePet.js';
-import { LANGUAGES, readLangPref, writeLangPref } from './core/i18n.js';
+import { LANGUAGES, t, setLocale, typeName as typeNameOf, mapName as mapNameOf, rarityName as rarityNameOf, moveName, locale } from './core/i18n.js';
 
 const view = ref('map'); // map | encounter | battle | dex | settings | shared
 const spawning = ref(false);
@@ -96,7 +96,7 @@ window.addEventListener('hashchange', async () => {
     giftPet.value = null;
     if (view.value === 'gift') view.value = 'map';
   } else if (location.hash.match(/^#[pg]=/)) {
-    showToast('链接无效或已损坏', 2600);
+    showToast(t('链接无效或已损坏'), 2600);
   }
 });
 // 挑战分享宠：查看者用自己的出战宠 vs 分享宠（复用战斗引擎；
@@ -105,13 +105,13 @@ function challengeShared() {
   if (!sharedPet.value) return;
   if (!party.value.length) {
     // 查看者还没有精灵：引导去游戏本体（而非只弹 toast 让人摸不着头脑）
-    showToast('你还没有精灵！点「返回游戏」→ 点地图去捕捉一只，再回来挑战', 4000);
+    showToast(t('你还没有精灵！点「返回游戏」→ 点地图去捕捉一只，再回来挑战'), 4000);
     return;
   }
   const healthy = party.value.filter(p => p.hp > 0);
   if (!healthy.length) {
     for (const p of save.pets) p.hp = undefined;
-    showToast('队伍已休整完毕！');
+    showToast(t('队伍已休整完毕！'));
   }
   const battleParty = party.value.map(p => {
     const copy = withStats({ ...p });
@@ -131,7 +131,12 @@ function challengeShared() {
 const battleFromChallenge = ref(false);
 
 const petSvgOf = (pet, size) => petSvg(pet, size);
-const typeChipStyle = (t) => ({ background: TYPE_COLORS[t] ?? '#9fa19f' });
+const typeChipStyle = (tp) => ({ background: TYPE_COLORS[tp] ?? '#9fa19f' });
+// 显示名 wrapper：先读 locale.value（建立响应式依赖，切语言触发重渲染）再映射
+const typeLabel = (tp) => { void locale.value; return typeNameOf(tp); };
+const moveLabel = (m) => { void locale.value; return moveName(m); };
+const mapLabel = (m) => { void locale.value; return mapNameOf(m); };
+const rarityLabel = (r) => { void locale.value; return rarityNameOf(r); };
 
 // 图鉴快照缓存：seed+phase 相同直接复用 dataURL（避免几十个 WebGL context）
 const snapCache = reactive(new Map()); // reactive：渲染完成后触发卡片 img 重渲染
@@ -168,7 +173,7 @@ async function encounter(mapId) {
   if (!isMapUnlocked(map)) {
     // 解锁条件提示（GlobalToast 已恢复渲染；补充还差几只的具体进度）
     const need = map.unlockAt - save.counters.caught;
-    showToast(`「${map.name}」尚未解锁：需要捕捉满 ${map.unlockAt} 只精灵，还差 ${need} 只（当前 ${save.counters.caught}/${map.unlockAt}）`, 3200);
+    showToast(t('「{map}」尚未解锁：需要捕捉满 {n} 只精灵，还差 {d} 只（当前 {c}/{n}）', { map: mapLabel(map.name), n: map.unlockAt, d: need, c: save.counters.caught }), 3200);
     return;
   }
   spawning.value = true;
@@ -191,7 +196,7 @@ async function encounter(mapId) {
           overrides = await genWithTimeout();
         } catch (err2) {
           console.warn('LLM 生成重试仍失败，降级本地随机', err2);
-          showToast('LLM 生成失败，本次使用本地随机');
+          showToast(t('LLM 生成失败，本次使用本地随机'));
         }
       }
     }
@@ -216,18 +221,18 @@ function exitShared() {
 function claimGift() {
   if (!giftPet.value) return;
   if (isGiftClaimed(giftPet.value)) {
-    showToast('你已经领取过这只精灵啦', 2600);
+    showToast(t('你已经领取过这只精灵啦'), 2600);
     return;
   }
   const adopted = adoptGiftPet(giftPet.value);
   if (!adopted) { // 引擎级去重兜底（UI 置灰外的第二道闸）
-    showToast('你已经领取过这只精灵啦', 2600);
+    showToast(t('你已经领取过这只精灵啦'), 2600);
     return;
   }
   // 新灵魂在领取人本地诞生（LLM 配置用领取人自己的——赠送链接从不携带任何 LLM 信息）
   const soul = ensureSoul(adopted);
   addEpisodic(soul, `来自好友的赠送，${adopted.name} 加入了队伍。这份缘分会在这里继续生长。`);
-  celebrate('catch', adopted, '来自好友的赠送，加入你的队伍！');
+  celebrate('catch', adopted, t('来自好友的赠送，加入你的队伍！'));
   persist();
 }
 
@@ -242,7 +247,7 @@ function fleeWild() { wild.value = null; view.value = 'map'; }
 // 空手丢球（不依赖队伍）：每只野生精灵限 BALLS_MAX 次，越丢概率越低
 function throwDirect() {
   if (ballsLeft.value <= 0) {
-    showToast('精灵球用完了！开战打残它再捕，或换只精灵刷新重置');
+    showToast(t('精灵球用完了！开战打残它再捕，或换只精灵刷新重置'));
     return;
   }
   const target = withStats({ ...wild.value });
@@ -254,9 +259,9 @@ function throwDirect() {
   } else {
     ballsLeft.value--;
     if (ballsLeft.value <= 0) {
-      showToast(`${wild.value.name} 警觉起来了！球用完了——开战削弱它再捕吧`);
+      showToast(t('{name} 警觉起来了！球用完了——开战削弱它再捕吧', { name: wild.value.name }));
     } else {
-      showToast(`${wild.value.name} 挣脱了精灵球！（剩余 ${ballsLeft.value} 次机会）`);
+      showToast(t('{name} 挣脱了精灵球！（剩余 {n} 次机会）', { name: wild.value.name, n: ballsLeft.value }));
     }
   }
 }
@@ -264,14 +269,14 @@ function throwDirect() {
 function startBattle() {
   // 没有精灵时开战会以 undefined 组队直接崩溃——引导先去捕捉
   if (!party.value.length) {
-    showToast('还没有精灵伙伴！先丢球捕捉一只吧');
+    showToast(t('还没有精灵伙伴！先丢球捕捉一只吧'));
     return;
   }
   const healthy = party.value.filter(p => p.hp > 0);
   if (!healthy.length) {
     // 全队倒下：原地复活（休闲游戏，不设惩罚死循环）
     for (const p of save.pets) p.hp = undefined;
-    showToast('队伍已休整完毕！');
+    showToast(t('队伍已休整完毕！'));
     healthy.push(...party.value);
   }
   // 组建战斗队伍：存档中从未上场的宠物没有 hp 字段，按满血补齐。
@@ -423,7 +428,7 @@ async function act(action) {
     // 逐事件播放动画与飘字
     for (const e of events) {
       if (e.type === 'damage') {
-        playAnim('hit', e.side === 'player' ? 'wild' : 'player', `-${e.damage}${e.crit ? ' 会心!' : ''}`);
+        playAnim('hit', e.side === 'player' ? 'wild' : 'player', `-${e.damage}${e.crit ? t(' 会心!') : ''}`);
         if (e.side === 'player') fireTaunt(state.active, state.wild, e);
         else if (e.side === 'wild') fireWildTaunt(state.wild, state.active, e); // 敌方也有战斗心声（流式）
       } else if (e.type === 'heal') {
@@ -447,13 +452,13 @@ async function act(action) {
       const backToShared = battleFromChallenge.value;
       battleFromChallenge.value = false;
       view.value = backToShared && sharedPet.value ? 'shared' : 'map';
-      showToast('成功逃走了！');
+      showToast(t('成功逃走了！'));
     }
     // ended === 'switch'：等待玩家选择换宠（force-switch 面板显示）
   } catch (err) {
     console.error('act 失败', err);
     window.__lastActError = err?.stack ?? String(err);
-    showToast('战斗出现异常，已终止本场');
+    showToast(t('战斗出现异常，已终止本场'));
     battle.value = null;
     wild.value = null;
     view.value = 'map';
@@ -504,11 +509,11 @@ async function winBattle() {
         save.counters.evolutions++;
         const soul = ensureSoul(r.evolvedTo);
         onEvolve(soul, r.evolvedTo.name, r.evolvedTo.phase ?? 1);
-        celebrate('evolve', r.evolvedTo, `进化成了 ${r.evolvedTo.name}！灵魂也成长了`);
+        celebrate('evolve', r.evolvedTo, t('进化成了 {name}！灵魂也成长了', { name: r.evolvedTo.name }));
       } else if (r.leveled) {
-        celebrate('levelup', mine, `${mine.name} 升到了 Lv.${mine.level}！获得 ${exp} 点经验`, r.statGains);
+        celebrate('levelup', mine, t('{name} 升到了 Lv.{lv}！获得 {exp} 点经验', { name: mine.name, lv: mine.level, exp }), r.statGains);
       } else {
-        celebrate('win', mine, `${mine.name} 战胜了 ${state.wild.name}，+${exp} 经验`);
+        celebrate('win', mine, t('{name} 战胜了 {foe}，+{exp} 经验', { name: mine.name, foe: state.wild.name, exp }));
       }
       battle.value = null;
       wild.value = null;
@@ -537,7 +542,7 @@ async function winBattle() {
         devourDesc = desc.join('；');
         if (desc.length) {
           addEpisodic(ensureSoul(mine), `吞噬了${state.wild.name}的${desc.length}处特征：${desc.slice(0, 3).join('、')}${desc.length > 3 ? '…' : ''}。更强了！`);
-          showToast(`${mine.name} 吞噬成功！${devourDesc}`, 3600);
+          showToast(t('{name} 吞噬成功！{desc}', { name: mine.name, desc: devourDesc }), 3600);
         }
       }
       persist();
@@ -550,16 +555,16 @@ async function winBattle() {
     // 灵魂可能尚未建立（老存档精灵直接跳到进化）——ensure 后再继承
     const soul = ensureSoul(r.evolvedTo);
     onEvolve(soul, r.evolvedTo.name, r.evolvedTo.phase ?? 1);
-    celebrate('evolve', r.evolvedTo, `进化成了 ${r.evolvedTo.name}！灵魂也成长了`);
+    celebrate('evolve', r.evolvedTo, t('进化成了 {name}！灵魂也成长了', { name: r.evolvedTo.name }));
   } else if (sharedEvolved.length) {
     // 主战精灵没进化但队友进化了：也要庆祝（取最后一只）
     const e = sharedEvolved[sharedEvolved.length - 1];
-    celebrate('evolve', e, `队伍中的 ${e.name} 进化了！`);
+    celebrate('evolve', e, t('队伍中的 {name} 进化了！', { name: e.name }));
   } else if (r.leveled) {
-    celebrate('levelup', mine, `${mine.name} 升到了 Lv.${mine.level}！${r.newMoves.length ? r.newMoves.join('，') : `获得 ${exp} 点经验`}`, r.statGains);
+    celebrate('levelup', mine, t('{name} 升到了 Lv.{lv}！获得 {exp} 点经验', { name: mine.name, lv: mine.level, exp }), r.statGains);
   } else {
     // 普通胜利也有弹窗（此前只发 toast，玩家常误以为赢了没反应）
-    celebrate('win', mine, `${mine.name} 战胜了 ${state.wild.name}，+${exp} 经验`);
+    celebrate('win', mine, t('{name} 战胜了 {foe}，+{exp} 经验', { name: mine.name, foe: state.wild.name, exp }));
   }
   battle.value = null;
   wild.value = null;
@@ -584,14 +589,14 @@ function loseBattle() {
   const alive = state.party.filter(p => p.uid !== state.active.uid && p.hp > 0);
   if (alive.length) {
     state.ended = 'switch';
-    battleLog.value.push({ type: 'status', text: `${state.active.name} 倒下了，请选择下一只精灵！` });
-    showToast(`${state.active.name} 倒下了！换其他精灵继续战斗`);
+    battleLog.value.push({ type: 'status', text: t('{name} 倒下了，请选择下一只精灵！', { name: state.active.name }) });
+    showToast(t('{name} 倒下了！换其他精灵继续战斗', { name: state.active.name }));
     // 败北经验也可能触发进化（此前静默进化：不计数/不继承灵魂/不庆祝）
     if (r.evolvedTo) {
       save.counters.evolutions++;
       const soul = ensureSoul(r.evolvedTo);
       onEvolve(soul, r.evolvedTo.name, r.evolvedTo.phase ?? 1);
-      celebrate('evolve', r.evolvedTo, `虽然输了，但 ${r.evolvedTo.name} 进化了！`);
+      celebrate('evolve', r.evolvedTo, t('虽然输了，但 {name} 进化了！', { name: r.evolvedTo.name }));
     }
     return; // 保持 battle 状态，force-switch 面板出现
   }
@@ -602,9 +607,9 @@ function loseBattle() {
     save.counters.evolutions++;
     const soul = ensureSoul(r.evolvedTo);
     onEvolve(soul, r.evolvedTo.name, r.evolvedTo.phase ?? 1);
-    celebrate('evolve', r.evolvedTo, `虽然输了，但 ${r.evolvedTo.name} 进化了！`);
+    celebrate('evolve', r.evolvedTo, t('虽然输了，但 {name} 进化了！', { name: r.evolvedTo.name }));
   } else {
-    showToast('全军覆没…精灵们休息了一会儿又满血复活（休闲模式）');
+    showToast(t('全军覆没…精灵们休息了一会儿又满血复活（休闲模式）'));
   }
   battle.value = null;
   wild.value = null;
@@ -621,7 +626,7 @@ function succeedCatch() {
     battleFromChallenge.value = false;
     battle.value = null;
     view.value = sharedPet.value ? 'shared' : 'map';
-    showToast('好友的精灵不能被捕捉！');
+    showToast(t('好友的精灵不能被捕捉！'));
     return;
   }
   const caught = JSON.parse(JSON.stringify(battle.value?.wild ?? wild.value));
@@ -629,7 +634,7 @@ function succeedCatch() {
   // 新伙伴的灵魂在此刻诞生（persona 按 seed 掷点固化）
   const soul = ensureSoul(adopted);
   addEpisodic(soul, `在${mapInfo(caught.caughtMap ?? caught.caughtAt).name}与训练家相遇，被捕捉后加入了队伍。这是你们缘分的开始。`);
-  celebrate('catch', adopted, '加入你的队伍！');
+  celebrate('catch', adopted, t('加入你的队伍！'));
   battle.value = null;
   wild.value = null;
   view.value = 'map';
@@ -670,7 +675,7 @@ function toggleParty(uid) {
   const i = save.partyIds.indexOf(uid);
   if (i >= 0) save.partyIds.splice(i, 1);
   else if (save.partyIds.length < 4) save.partyIds.push(uid);
-  else { showToast('最多上阵 4 只'); return; }
+  else { showToast(t('最多上阵 4 只')); return; }
   // 上阵的宠物提到图鉴最前（按 partyIds 顺序）；下阵的移到末尾。
   // 只在状态变化时执行一次——用户随后仍可手动微调排序（出战顺序=图鉴顺序）。
   const inParty = save.partyIds.map(id => save.pets.find(p => p.uid === id)).filter(Boolean);
@@ -680,14 +685,14 @@ function toggleParty(uid) {
 }
 
 function releasePet(pet) {
-  if (!confirm(`确定放归 ${pet.name} 吗？此操作不可撤销。`)) return;
+  if (!confirm(t('确定放归 {name} 吗？此操作不可撤销。', { name: pet.name }))) return;
   save.pets = save.pets.filter(p => p.uid !== pet.uid);
   save.partyIds = save.partyIds.filter(id => id !== pet.uid);
   // 同步清理灵魂档案与聊天记录（避免残留孤儿数据）
   forgetSoul(pet.uid);
   forgetChat(pet.uid);
   persist();
-  showToast(`${pet.name} 回归了大自然`);
+  showToast(t('{name} 回归了大自然', { name: pet.name }));
 }
 
 function evExp(pet) {
@@ -698,10 +703,10 @@ function evExp(pet) {
 
 // ---- 存档导入导出 ----
 // ---- 语言偏好（LLM 输出语言）：设置页下拉，默认浏览器语言，切换即存 ----
-const langPref = ref(readLangPref());
+const langPref = locale; // 直接绑定 i18n 的响应式 locale：切换即全局重渲染
 function onLangChange() {
-  const ok = writeLangPref(langPref.value);
-  if (ok) showToast(`AI 输出语言已切换（下次生成生效）`, 2000);
+  const ok = setLocale(langPref.value);
+  if (ok) showToast(t('语言已切换'), 2000);
 }
 function doExport() {
   // 存档 + 灵魂档案 + 聊天记录 + LLM 配置一起导出（人格/羁绊/记忆/接口配置不丢失）。
@@ -726,7 +731,7 @@ async function onImportFile(e) {
   try {
     const text = await file.text();
     const { save: data, souls, chats, llm } = importSaveText(text);
-    if (!confirm('导入会覆盖当前存档，确定继续吗？')) return;
+    if (!confirm(t('导入会覆盖当前存档，确定继续吗？'))) return;
     Object.assign(save, data);
     // 恢复灵魂与聊天（有则覆盖，无则保留导入文件中原样内容）
     if (souls) importSouls(souls);
@@ -748,16 +753,16 @@ async function onImportFile(e) {
       saveLlmConfig();
     }
     persist();
-    showToast('导入成功');
+    showToast(t('导入成功'));
   } catch (err) {
-    showToast(`导入失败：${err.message}`);
+    showToast(t('导入失败：{err}', { err: err.message }));
   } finally {
     e.target.value = '';
   }
 }
 
 function doReset() {
-  if (!confirm('确定清空全部存档吗？此操作不可撤销！')) return;
+  if (!confirm(t('确定清空全部存档吗？此操作不可撤销！'))) return;
   // 一并清理灵魂档案与聊天记录（与存档同生命周期，避免残留脏数据）
   clearAllStorage();
   location.reload();
@@ -773,42 +778,42 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
     <header class="topbar">
       <div class="brand">
         <span class="brand-icon">🐾</span>
-        <span class="brand-name">奇幻萌宠</span>
+        <span class="brand-name">{{ t('app.brand') }}</span>
         <span class="brand-sub">FunPets</span>
       </div>
       <nav class="tabs">
-        <button :class="{ active: view === 'map' }" @click="view = 'map'; wild = null">地图</button>
+        <button :class="{ active: view === 'map' }" @click="view = 'map'; wild = null">{{ t('地图') }}</button>
         <!-- 分享模式：相遇位变「分享宠」入口（查看者点地图/图鉴后还能回来挑战） -->
-        <button v-if="sharedPet" :class="{ active: view === 'shared' }" @click="view = 'shared'">🐾 分享宠</button>
+        <button v-if="sharedPet" :class="{ active: view === 'shared' }" @click="view = 'shared'">{{ t('🐾 分享宠') }}</button>
         <button v-else :class="{ active: view === 'encounter' || view === 'battle' }"
           :disabled="!wild && !battle"
-          @click="if (battle) view = 'battle'; else if (wild) view = 'encounter'">相遇</button>
-        <button :class="{ active: view === 'dex' }" @click="view = 'dex'">图鉴 <em>{{ save.pets.length }}</em></button>
-        <button :class="{ active: view === 'settings' }" @click="view = 'settings'">设置</button>
+          @click="if (battle) view = 'battle'; else if (wild) view = 'encounter'">{{ t('相遇') }}</button>
+        <button :class="{ active: view === 'dex' }" @click="view = 'dex'">{{ t('图鉴') }} <em>{{ save.pets.length }}</em></button>
+        <button :class="{ active: view === 'settings' }" @click="view = 'settings'">{{ t('设置') }}</button>
       </nav>
     </header>
 
     <main class="content">
       <!-- ============ 地图 ============ -->
       <section v-if="view === 'map'" class="map-view">
-        <p class="hint">点击地图探索 · 已捕捉 {{ save.counters.caught }}/{{ collectionGoal }} 只 · 遭遇 {{ save.counters.encounters }} 次 · 进化 {{ save.counters.evolutions }} 次</p>
+        <p class="hint">{{ t('点击地图探索 · 已捕捉 {c}/{g} 只 · 遭遇 {e} 次 · 进化 {v} 次', { c: save.counters.caught, g: collectionGoal, e: save.counters.encounters, v: save.counters.evolutions }) }}</p>
         <div class="map-grid">
           <button v-for="map in MAPS" :key="map.id" class="map-card" :class="{ locked: !isMapUnlocked(map) }"
             :style="{ '--sky1': map.sky[0], '--sky2': map.sky[1], '--ground': map.ground }"
             @click="encounter(map.id)">
             <span class="map-art"><span class="ground"></span><span class="sun"></span></span>
             <span class="map-name">
-              {{ map.name }}
-              <small v-if="!isMapUnlocked(map)">🔒 捕捉 {{ map.unlockAt }} 只解锁</small>
-              <small v-else class="lv-range">野生 Lv.{{ mapLevelRange(map.id)[0] }}-{{ mapLevelRange(map.id)[1] }}</small>
+              {{ mapLabel(map.name) }}
+              <small v-if="!isMapUnlocked(map)">{{ t('🔒 捕捉 {n} 只解锁', { n: map.unlockAt }) }}</small>
+              <small v-else class="lv-range">{{ t('野生 Lv.{a}-{b}', { a: mapLevelRange(map.id)[0], b: mapLevelRange(map.id)[1] }) }}</small>
             </span>
             <span class="map-types">
-              <i v-for="t in map.favorTypes" :key="t" class="chip" :style="typeChipStyle(t)">{{ t }}</i>
+              <i v-for="tp in map.favorTypes" :key="tp" class="chip" :style="typeChipStyle(tp)">{{ typeLabel(tp) }}</i>
             </span>
-            <span class="map-desc">{{ map.desc }}</span>
+            <span class="map-desc" v-if="locale === 'zh' || locale === 'zh-TW'">{{ map.desc }}</span>
           </button>
         </div>
-        <div v-if="spawning" class="spawn-mask"><div class="spinner"></div><p>草丛沙沙作响…</p></div>
+        <div v-if="spawning" class="spawn-mask"><div class="spinner"></div><p>{{ t('草丛沙沙作响…') }}</p></div>
       </section>
 
       <!-- ============ 分享观赏（#p= 链接）：只读 3D + 挑战 ============ -->
@@ -818,15 +823,15 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
             <Pet3D :pet="sharedPet" :size="200" drag-mode="free" />
           </div>
           <h2>{{ sharedPet.name }} <small class="lv">Lv.{{ sharedPet.level }}</small></h2>
-          <p class="shared-owner-hint">🐾 来自好友分享的精灵 · 点击它会跳一下</p>
+          <p class="shared-owner-hint">{{ t('🐾 来自好友分享的精灵 · 点击它会跳一下') }}</p>
           <div class="chips">
-            <i v-for="t in sharedPet.types" :key="t" class="chip" :style="typeChipStyle(t)">{{ t }}</i>
-            <i class="chip rarity-chip" :style="{ background: rarityInfo(sharedPet.rarity).color }">{{ rarityInfo(sharedPet.rarity).name }}</i>
+            <i v-for="tp in sharedPet.types" :key="tp" class="chip" :style="typeChipStyle(tp)">{{ typeLabel(tp) }}</i>
+            <i class="chip rarity-chip" :style="{ background: rarityInfo(sharedPet.rarity).color }">{{ rarityLabel(sharedPet.rarity) }}</i>
           </div>
           <p class="lore">{{ sharedPet.lore }}</p>
           <div class="actions">
-            <button class="primary" @click="challengeShared">⚔️ 用我的精灵挑战</button>
-            <button class="ghost" @click="exitShared">返回游戏</button>
+            <button class="primary" @click="challengeShared">{{ t('⚔️ 用我的精灵挑战') }}</button>
+            <button class="ghost" @click="exitShared">{{ t('返回游戏') }}</button>
           </div>
         </div>
       </section>
@@ -838,16 +843,16 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
             <Pet3D :pet="giftPet" :size="200" drag-mode="free" />
           </div>
           <h2>{{ giftPet.name }} <small class="lv">Lv.{{ giftPet.level }}</small></h2>
-          <p class="shared-owner-hint">🎁 好友赠送的精灵 · 点击它会跳一下</p>
+          <p class="shared-owner-hint">{{ t('🎁 好友赠送的精灵 · 点击它会跳一下') }}</p>
           <div class="chips">
-            <i v-for="t in giftPet.types" :key="t" class="chip" :style="typeChipStyle(t)">{{ t }}</i>
-            <i class="chip rarity-chip" :style="{ background: rarityInfo(giftPet.rarity).color }">{{ rarityInfo(giftPet.rarity).name }}</i>
+            <i v-for="tp in giftPet.types" :key="tp" class="chip" :style="typeChipStyle(tp)">{{ typeLabel(tp) }}</i>
+            <i class="chip rarity-chip" :style="{ background: rarityInfo(giftPet.rarity).color }">{{ rarityLabel(giftPet.rarity) }}</i>
           </div>
           <p class="lore">{{ giftPet.lore }}</p>
           <div class="actions">
-            <button v-if="!isGiftClaimed(giftPet)" class="primary gift-claim" @click="claimGift">🎁 领取它！</button>
-            <button v-else class="ghost" disabled>✅ 已领取</button>
-            <button class="ghost" @click="exitGift">返回游戏</button>
+            <button v-if="!isGiftClaimed(giftPet)" class="primary gift-claim" @click="claimGift">{{ t('🎁 领取它！') }}</button>
+            <button v-else class="ghost" disabled>{{ t('✅ 已领取') }}</button>
+            <button class="ghost" @click="exitGift">{{ t('返回游戏') }}</button>
           </div>
         </div>
       </section>
@@ -860,14 +865,14 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
           </div>
           <h2>{{ wild.name }} <small class="lv">Lv.{{ wild.level }}</small></h2>
           <div class="chips">
-            <i v-for="t in wild.types" :key="t" class="chip" :style="typeChipStyle(t)">{{ t }}</i>
-            <i class="chip rarity-chip" :style="{ background: rarityInfo(wild.rarity).color }">{{ rarityInfo(wild.rarity).name }}</i>
+            <i v-for="tp in wild.types" :key="tp" class="chip" :style="typeChipStyle(tp)">{{ typeLabel(tp) }}</i>
+            <i class="chip rarity-chip" :style="{ background: rarityInfo(wild.rarity).color }">{{ rarityLabel(wild.rarity) }}</i>
           </div>
           <p class="lore">{{ wild.lore }}</p>
           <div class="actions">
-            <button class="primary" @click="startBattle">开战（打残再捕更容易）</button>
-            <button class="primary ball" :disabled="ballsLeft <= 0" @click="throwDirect">直接丢球{{ ballsLeft < BALLS_MAX ? `（剩${ballsLeft}）` : '' }}</button>
-            <button class="ghost" @click="fleeWild">离开</button>
+            <button class="primary" @click="startBattle">{{ t('开战（打残再捕更容易）') }}</button>
+            <button class="primary ball" :disabled="ballsLeft <= 0" @click="throwDirect">{{ ballsLeft < BALLS_MAX ? t('直接丢球（剩{n}）', { n: ballsLeft }) : t('直接丢球') }}</button>
+            <button class="ghost" @click="fleeWild">{{ t('离开') }}</button>
           </div>
         </div>
       </section>
@@ -920,10 +925,10 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
         <!-- 操作区（优先级最高，不被战报推挤） -->
         <!-- 强制换宠 -->
         <div v-if="battle.ended === 'switch'" class="battle-actions force-switch">
-          <p class="hint">哪只精灵继续战斗？</p>
+          <p class="hint">{{ t('哪只精灵继续战斗？') }}</p>
           <button v-for="(p, i) in battle.party" :key="p.uid" class="skill switch-opt" :disabled="p.hp <= 0 || p.uid === battle.active.uid" @click="switchPet(i)">
             <img class="switch-avatar" :src="petSnapshot(p)" :alt="p.name" width="44" height="44" />
-            <span class="switch-meta">{{ p.name }}<small>{{ p.hp > 0 ? `HP ${p.hp}/${p.maxHp}` : '已倒下' }}</small></span>
+            <span class="switch-meta">{{ p.name }}<small>{{ p.hp > 0 ? `HP ${p.hp}/${p.maxHp}` : t('已倒下') }}</small></span>
           </button>
         </div>
 
@@ -932,26 +937,26 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
           <button v-for="(mv, i) in battle.active.moves" :key="mv.name" class="skill" :disabled="battleBusy || !!battle.ended || showSwitchPanel"
             :style="{ '--type-color': typeChipStyle(mv.type ?? battle.active.types[0]).background }"
             @click="act({ type: 'move', moveIndex: i })">
-            {{ mv.name }}<small>{{ mv.power ? `威力 ${mv.power}` : '变化' }}</small>
+            {{ moveLabel(mv.name) }}<small>{{ mv.power ? t('威力 {n}', { n: mv.power }) : t('变化') }}</small>
           </button>
           <!-- 挑战赛（好友分享宠）不能丢球捕捉——那是别人的精灵，捕捉语义不成立 -->
           <button v-if="!battleFromChallenge" class="ball" :disabled="battleBusy || !!battle.ended || showSwitchPanel" @click="act({ type: 'ball' })">
-            丢球 <small>{{ Math.round(catchChance(battle.wild) * 100) }}%</small>
+            {{ t('丢球') }} <small>{{ Math.round(catchChance(battle.wild) * 100) }}%</small>
           </button>
           <button class="switch-toggle" :disabled="battleBusy || !!battle.ended" @click="showSwitchPanel = !showSwitchPanel" title="切换出战精灵（换上后对方会趁机攻击）">
-            换宠 <small>{{ battle.party.filter(p => p.hp > 0 && p.uid !== battle.active.uid).length }} 只可用</small>
+            {{ t('换宠') }} <small>{{ battle.party.filter(p => p.hp > 0 && p.uid !== battle.active.uid).length }}</small>
           </button>
-          <button class="ghost" :disabled="battleBusy || !!battle.ended || showSwitchPanel" @click="act({ type: 'run' })">逃跑</button>
+          <button class="ghost" :disabled="battleBusy || !!battle.ended || showSwitchPanel" @click="act({ type: 'run' })">{{ t('逃跑') }}</button>
         </div>
 
         <!-- 主动换宠面板（非强制：点「换宠」展开；选择后 wild 趁机攻击，符合宝可梦规则） -->
         <div v-if="!battle.ended && showSwitchPanel" class="battle-actions force-switch">
-          <p class="hint">换上哪只精灵？（换宠会消耗本回合，对方趁机攻击）</p>
+          <p class="hint">{{ t('换上哪只精灵？（换宠会消耗本回合，对方趁机攻击）') }}</p>
           <button v-for="(p, i) in battle.party" :key="p.uid" class="skill switch-opt" :disabled="p.hp <= 0 || p.uid === battle.active.uid" @click="showSwitchPanel = false; switchPet(i)">
             <img class="switch-avatar" :src="petSnapshot(p)" :alt="p.name" width="44" height="44" />
-            <span class="switch-meta">{{ p.name }}<small>{{ p.hp > 0 ? `HP ${p.hp}/${p.maxHp}` : '已倒下' }}</small></span>
+            <span class="switch-meta">{{ p.name }}<small>{{ p.hp > 0 ? `HP ${p.hp}/${p.maxHp}` : t('已倒下') }}</small></span>
           </button>
-          <button class="ghost" @click="showSwitchPanel = false">取消</button>
+          <button class="ghost" @click="showSwitchPanel = false">{{ t('取消') }}</button>
         </div>
 
         <!-- 战报（固定高度可滚动，新纪录自动滚到底，不再推挤按钮） -->
@@ -963,34 +968,34 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
 
       <!-- ============ 图鉴 ============ -->
       <section v-else-if="view === 'dex'" class="dex-view">
-        <p class="hint">已遇见 {{ totalSeen }} 种 · 已捕捉 {{ save.pets.length }}/{{ collectionGoal }} · 上阵 {{ save.partyIds.length }}/4（点击卡片切换上阵 · 按钮排序）</p>
-        <div v-if="!dexList.length" class="empty">还没有捕捉到精灵，去地图逛逛吧！</div>
+        <p class="hint">{{ t('已遇见 {s} 种 · 已捕捉 {c}/{g} · 上阵 {p}/4（点击卡片切换上阵 · 按钮排序）', { s: totalSeen, c: save.pets.length, g: collectionGoal, p: save.partyIds.length }) }}</p>
+        <div v-if="!dexList.length" class="empty">{{ t('还没有捕捉到精灵，去地图逛逛吧！') }}</div>
         <div class="dex-grid">
           <div v-for="(pet, di) in dexList" :key="pet.uid" class="dex-card" :class="{ inParty: save.partyIds.includes(pet.uid) }"
             @click="detailPet = pet">
             <div class="dex-sprite"><img :key="petSnapshotKey(pet)" :src="petSnapshot(pet)" :alt="pet.name" width="84" height="84" loading="lazy" /></div>
             <div class="dex-info">
-              <strong>{{ pet.name }} <small v-if="pet.phase" class="phase-badge">{{ pet.phase }}阶</small></strong>
+              <strong>{{ pet.name }} <small v-if="pet.phase" class="phase-badge">{{ t('{n}阶', { n: pet.phase }) }}</small></strong>
               <div class="chips">
                 <i v-for="t in pet.types" :key="t" class="chip sm" :style="typeChipStyle(t)">{{ t }}</i>
-                <i class="chip sm rarity-chip" :style="{ background: rarityInfo(pet.rarity).color }">{{ rarityInfo(pet.rarity).name }}</i>
+                <i class="chip sm rarity-chip" :style="{ background: rarityInfo(pet.rarity).color }">{{ rarityLabel(pet.rarity) }}</i>
               </div>
-              <span class="lv">Lv.{{ pet.level }} · 点击查看详情/聊天</span>
+              <span class="lv">Lv.{{ pet.level }} · {{ t('点击查看详情/聊天') }}</span>
               <div class="exp-bar"><i :style="{ width: evExp(pet) + '%' }"></i></div>
               <div class="stats">
-                <span>HP {{ pet.maxHp }}</span><span>攻 {{ pet.atkStat }}</span><span>防 {{ pet.defStat }}</span><span>速 {{ pet.spdStat }}</span>
+                <span>HP {{ pet.maxHp }}</span><span>{{ t('攻') }} {{ pet.atkStat }}</span><span>{{ t('防') }} {{ pet.defStat }}</span><span>{{ t('速') }} {{ pet.spdStat }}</span>
               </div>
               <p class="lore">{{ pet.lore }}</p>
             </div>
-            <button class="release" @click.stop="releasePet(pet)" title="放归">✕</button>
+            <button class="release" @click.stop="releasePet(pet)" :title="t('放归')">✕</button>
             <div class="sort-btns" @click.stop>
-              <button class="sort-btn" :disabled="di === 0" @click="movePet(pet, 'top')" title="置顶">⤒</button>
-              <button class="sort-btn" :disabled="di === 0" @click="movePet(pet, 'up')" title="上移">↑</button>
-              <button class="sort-btn" :disabled="di === dexList.length - 1" @click="movePet(pet, 'down')" title="下移">↓</button>
+              <button class="sort-btn" :disabled="di === 0" @click="movePet(pet, 'top')" :title="t('置顶')">⤒</button>
+              <button class="sort-btn" :disabled="di === 0" @click="movePet(pet, 'up')" :title="t('上移')">↑</button>
+              <button class="sort-btn" :disabled="di === dexList.length - 1" @click="movePet(pet, 'down')" :title="t('下移')">↓</button>
             </div>
             <button class="party-toggle" :class="{ on: save.partyIds.includes(pet.uid) }"
-              @click.stop="toggleParty(pet.uid)" :title="save.partyIds.includes(pet.uid) ? '下阵' : '上阵'">
-              {{ save.partyIds.includes(pet.uid) ? '出战中' : '上阵' }}
+              @click.stop="toggleParty(pet.uid)" :title="save.partyIds.includes(pet.uid) ? t('下阵') : t('上阵')">
+              {{ save.partyIds.includes(pet.uid) ? t('出战中') : t('上阵') }}
             </button>
           </div>
         </div>
@@ -999,35 +1004,35 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
       <!-- ============ 设置 ============ -->
       <section v-else-if="view === 'settings'" class="settings-view">
         <div class="panel">
-          <h3>🌍 语言 / Language</h3>
-          <p class="hint">AI 生成内容的输出语言（精灵名字与描述、灵魂聊天、战斗台词、分享文案）。默认跟随浏览器，可手动切换。</p>
+          <h3>{{ t('🌍 语言 / Language') }}</h3>
+          <p class="hint">{{ t('界面与 AI 输出语言。默认跟随浏览器，可手动切换。') }}</p>
           <label class="lang-row">
-            <span>输出语言</span>
+            <span>{{ t('输出语言') }}</span>
             <select class="lang-select" v-model="langPref" @change="onLangChange">
               <option v-for="l in LANGUAGES" :key="l.code" :value="l.code">{{ l.label }}</option>
             </select>
           </label>
         </div>
         <div class="panel">
-          <h3>🤖 AI 随机生成（可选）</h3>
-          <p class="hint">配置 OpenAI 兼容接口后，每次刷新精灵由大模型生成名字、属性与描述；关闭或失败时自动使用本地随机。API Key 仅保存在你的浏览器本地。</p>
-          <label><input type="checkbox" v-model="llmConfig.enabled" @change="saveLlmConfig" /> 启用 AI 生成</label>
+          <h3>{{ t('🤖 AI 随机生成（可选）') }}</h3>
+          <p class="hint">{{ t('配置 OpenAI 兼容接口后，每次刷新精灵由大模型生成名字、属性与描述；关闭或失败时自动使用本地随机。API Key 仅保存在你的浏览器本地。') }}</p>
+          <label><input type="checkbox" v-model="llmConfig.enabled" @change="saveLlmConfig" /> {{ t('启用 AI 生成') }}</label>
           <label>Base URL <input v-model.trim="llmConfig.baseUrl" placeholder="https://api.example.com/v1" @change="saveLlmConfig" /></label>
           <label>Model <input v-model.trim="llmConfig.model" placeholder="gpt-4o-mini / deepseek-chat / ..." @change="saveLlmConfig" /></label>
           <label>API Key <input v-model.trim="llmConfig.apiKey" type="password" placeholder="sk-...（可选，本地服务可留空）" @change="saveLlmConfig" /></label>
         </div>
         <div class="panel">
-          <h3>💾 存档</h3>
-          <p class="hint">数据保存在浏览器 localStorage。换浏览器/清缓存前请先导出。</p>
+          <h3>{{ t('💾 存档') }}</h3>
+          <p class="hint">{{ t('数据保存在浏览器 localStorage。换浏览器/清缓存前请先导出。') }}</p>
           <div class="actions">
-            <button class="primary" @click="doExport">导出存档</button>
-            <label class="primary import-btn">导入存档<input type="file" accept=".json" @change="onImportFile" /></label>
-            <button class="danger" @click="doReset">清空存档</button>
+            <button class="primary" @click="doExport">{{ t('导出存档') }}</button>
+            <label class="primary import-btn">{{ t('导入存档') }}<input type="file" accept=".json" @change="onImportFile" /></label>
+            <button class="danger" @click="doReset">{{ t('清空存档') }}</button>
           </div>
         </div>
         <div class="panel">
-          <h3>📎 关于</h3>
-          <p class="hint">奇幻萌宠 FunPets 是纯前端开源休闲游戏，喜欢的话去仓库点个 ⭐ 吧～</p>
+          <h3>{{ t('📎 关于') }}</h3>
+          <p class="hint">{{ t('奇幻萌宠 FunPets 是纯前端开源休闲游戏，喜欢的话去仓库点个 ⭐ 吧～') }}</p>
           <a class="github-link" href="https://github.com/Samge0/funny-pets" target="_blank" rel="noopener">
             <svg class="gh-icon" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" fill="currentColor">
               <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />

@@ -23,7 +23,7 @@ const server = createServer((req, res) => {
 await new Promise(r => server.listen(0, '127.0.0.1', r));
 const port = server.address().port;
 const browser = await chromium.launch({});
-const page = await browser.newPage({ viewport: { width: 1180, height: 900 } });
+const page = await browser.newPage({ locale: 'zh-CN', viewport: { width: 1180, height: 900 } });
 const errors = [];
 page.on('pageerror', e => errors.push(String(e).slice(0, 120)));
 function report(id, name, bugRepro, detail) {

@@ -32,7 +32,7 @@ function report(id, name, bugRepro, detail) {
 }
 
 // 在 app 页内构造 v2 压缩分享 hash（与 encodeShareParam 同算法）
-const helper = await browser.newPage({ viewport: { width: 1180, height: 900 } });
+const helper = await browser.newPage({ locale: 'zh-CN', viewport: { width: 1180, height: 900 } });
 await helper.goto(base, { waitUntil: 'networkidle' });
 const hash = await helper.evaluate(async () => {
   const pet = { n: '跳跳糖', s: 777, lv: 8, ph: 0, ty: ['电'], ra: 'rare', mv: [{ name: '电光', type: '电', power: 55 }],
@@ -49,7 +49,7 @@ const hash = await helper.evaluate(async () => {
 await helper.close();
 
 // 查看者：新 context 新 page（真实分享场景）
-const viewerCtx = await browser.newContext({ viewport: { width: 1180, height: 900 } });
+const viewerCtx = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1180, height: 900 } });
 const page = await viewerCtx.newPage();
 page.on('pageerror', e => errors.push(String(e).slice(0, 120)));
 await page.goto(base + '#' + hash, { waitUntil: 'networkidle' });

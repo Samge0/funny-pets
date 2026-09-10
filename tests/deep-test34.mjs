@@ -29,7 +29,7 @@ const port = server.address().port;
 const base = `http://127.0.0.1:${port}/funny-pets/app/`;
 
 const browser = await chromium.launch({});
-const page = await browser.newPage({ viewport: { width: 375, height: 740 } });
+const page = await browser.newPage({ locale: 'zh-CN', viewport: { width: 375, height: 740 } });
 page.on('dialog', d => d.accept().catch(() => {}));
 const errors = [];
 page.on('pageerror', e => errors.push(String(e).slice(0, 120)));

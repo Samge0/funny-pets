@@ -2,6 +2,7 @@
 // 存储结构（funny-pets-chats-v1）：uid -> { messages: [...], total, compressedAt }
 
 import { showToast } from './store.js';
+import { t } from './core/i18n.js';
 
 const CHAT_KEY = 'funny-pets-chats-v1';
 const COMPRESS_EVERY = 20;
@@ -79,7 +80,7 @@ export function maybeCompress(uid, cfg, pet, soul) {
     while (soul.memory.profile.length > 12) soul.memory.profile.shift();
     c.messages = c.messages.slice(-keep);
     writeAll();
-    if (facts.length) showToast(`${pet.name} 记住了新的东西`, 1800);
+    if (facts.length) showToast(t('{name} 记住了新的东西', { name: pet.name }), 1800);
   }).catch(err => {
     console.warn('记忆提炼失败（保留原对话）', err);
     c.compressedAt = c.total - since; // 回滚

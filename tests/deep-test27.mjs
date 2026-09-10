@@ -23,7 +23,7 @@ const browser = await chromium.launch({});
 const out = {};
 
 // ===== 分享者：捕捉一只 → 详情 → 点分享 → 拿链接 =====
-const owner = await browser.newPage({ viewport: { width: 1180, height: 900 } });
+const owner = await browser.newPage({ locale: 'zh-CN', viewport: { width: 1180, height: 900 } });
 await owner.goto(base + 'app/', { waitUntil: 'networkidle' });
 await owner.evaluate(() => localStorage.clear());
 await owner.reload({ waitUntil: 'networkidle' });
@@ -68,7 +68,7 @@ await owner.close();
 
 // ===== 查看者：新 context（独立 localStorage）打开链接 =====
 if (out.urlGenerated) {
-  const viewerCtx = await browser.newContext({ viewport: { width: 1180, height: 900 } });
+  const viewerCtx = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1180, height: 900 } });
   const viewer = await viewerCtx.newPage();
   const errs = [];
   viewer.on('pageerror', e => errs.push(String(e).slice(0, 150)));

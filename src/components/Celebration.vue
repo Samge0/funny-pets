@@ -14,9 +14,9 @@
         </div>
         <h2 class="cele-name">{{ celebration.pet?.name }}</h2>
         <div class="cele-chips" v-if="celebration.pet">
-          <i v-for="t in celebration.pet.types" :key="t" class="chip" :style="chipStyle(t)">{{ t }}</i>
+          <i v-for="tp in celebration.pet.types" :key="tp" class="chip" :style="chipStyle(tp)">{{ typeLabel(tp) }}</i>
           <i class="chip rarity-chip" :style="{ background: rarityInfo(celebration.pet.rarity).color }">
-            {{ rarityInfo(celebration.pet.rarity).name }}
+            {{ rarityLabel(celebration.pet.rarity) }}
           </i>
         </div>
         <p class="cele-detail" v-if="celebration.detail">{{ celebration.detail }}</p>
@@ -25,7 +25,7 @@
           <span v-for="c in statChips" :key="c" class="stat-chip">{{ c }}</span>
         </div>
         <p class="cele-lore" v-if="celebration.kind === 'catch' && celebration.pet">{{ celebration.pet.lore }}</p>
-        <button class="cele-btn" @click="closeCelebration">太棒了！</button>
+        <button class="cele-btn" @click="closeCelebration">{{ t('太棒了！') }}</button>
       </div>
     </div>
   </Transition>
@@ -37,8 +37,11 @@ import { celebration, closeCelebration, rarityInfo } from '../store.js';
 import Pet3D from './Pet3D.vue';
 import { TYPE_COLORS } from '../data/types.js';
 import { withStats } from '../store.js';
+import { t, rarityName as rarityLabelOf, typeName as typeNameOf, locale } from '../core/i18n.js';
+const typeLabel = (tp) => { void locale.value; return typeNameOf(tp); };
+const rarityLabel = (r) => { void locale.value; return rarityLabelOf(r); };
 
-const bannerText = computed(() => ({
+const bannerText = computed(() => t({
   catch: '🎉 捕捉成功！',
   evolve: '✨ 进化了！',
   levelup: '⬆️ 等级提升！',
@@ -58,7 +61,7 @@ const modelTag = computed(() => {
 const statChips = computed(() => {
   const g = celebration.statGains;
   if (!g) return [];
-  const names = { hp: 'HP', atk: '攻击', def: '防御', spd: '速度' };
+  const names = { hp: t('HP'), atk: t('攻击'), def: t('防御'), spd: t('速度') };
   return Object.entries(g).filter(([, v]) => v > 0).map(([k, v]) => `${names[k]} +${v}`);
 });
 
@@ -80,8 +83,8 @@ function starStyle(i) {
   };
 }
 
-function chipStyle(t) {
-  return { background: TYPE_COLORS[t] ?? '#9fa19f' };
+function chipStyle(tp) {
+  return { background: TYPE_COLORS[tp] ?? '#9fa19f' };
 }
 </script>
 

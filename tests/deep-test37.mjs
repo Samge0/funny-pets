@@ -28,7 +28,7 @@ await new Promise(r => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}/funny-pets/app/`;
 
 const browser = await chromium.launch({});
-const context = await browser.newContext({ viewport: { width: 1180, height: 900 }, locale: 'en-US' });
+const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1180, height: 900 }, locale: 'en-US' });
 const page = await context.newPage();
 const errors = [];
 page.on('pageerror', e => errors.push(`pageerror: ${e.message}`));

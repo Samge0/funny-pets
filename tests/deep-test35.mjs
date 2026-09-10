@@ -26,7 +26,7 @@ const port = server.address().port;
 const base = `http://127.0.0.1:${port}/funny-pets/app/`;
 
 const browser = await chromium.launch({});
-const context = await browser.newContext({ viewport: { width: 1180, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
+const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1180, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
 const page = await context.newPage();
 const errors = [];
 page.on('pageerror', e => errors.push(`pageerror: ${e.message}`));
