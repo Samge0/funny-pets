@@ -779,12 +779,14 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
           <div class="vs">⚡</div>
           <!-- 我方（右） -->
           <div class="fighter mine" :class="{ attacking: anim.who === 'player' && anim.kind === 'attack', hit: anim.who === 'player' && anim.kind === 'hit', fainting: anim.who === 'player' && anim.kind === 'faint' }">
-            <div class="fighter-model"><Pet3D :pet="battle.active" :size="130" drag-mode="panY" /></div>
+            <!-- 血条统一放上方（与左侧一致）：双方 LLM 台词气泡都在竞技场底部，
+                 我方血条在下时会被自己/对方的流式气泡遮挡 -->
             <div class="plate">
               <div class="plate-row"><strong>{{ battle.active.name }}</strong><span>Lv.{{ battle.active.level }}</span></div>
               <div class="hp-bar"><i :style="{ width: Math.max(0, battle.active.hp / battle.active.maxHp * 100) + '%' }" :class="{ low: battle.active.hp / battle.active.maxHp < 0.25 }"></i></div>
               <span class="hp-num">{{ battle.active.hp }} / {{ battle.active.maxHp }}</span>
             </div>
+            <div class="fighter-model"><Pet3D :pet="battle.active" :size="130" drag-mode="panY" /></div>
           </div>
           <!-- 飘字 -->
           <div class="float-layer">

@@ -315,7 +315,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   .fighter { min-width: 0; flex: 1; gap: 6px; }
   .fighter.wild { align-self: flex-start; }
   .fighter.mine { align-self: flex-end; justify-content: flex-end; }
-  .fighter.mine .plate { order: -1; } /* 我方信息牌在上、模型在下，形成对角对峙 */
+  /* 我方信息牌已在 DOM 中置于模型之前（血条统一上方，防 LLM 气泡遮挡）——order 补丁随布局调整移除 */
   .fighter-model canvas { width: 100% !important; height: auto !important; }
   .plate { min-width: 0; width: 100%; padding: 6px 8px; }
   .plate-row { font-size: 11.5px; gap: 6px; }
