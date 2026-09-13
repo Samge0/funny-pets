@@ -14,11 +14,11 @@ const PROMPT = `你是一个原创宠物精灵生成器。请随机生成一只�
   "name": "2-4个汉字的原创名字，必须虚构，禁止使用任何现有动漫/游戏作品中的名称",
   "types": ["从这些属性中选1-2个：${TYPES.join('/')}"],
   "bodyType": "从这些中选一个：quadruped/bipedal/avian/serpent/aquatic/mochi",
-  "ears": "从这些中选一个：none/round/pointy/long/fin",
+  "ears": "从这些中选一个：none/round/pointy/long/fin/fluffy/droopy/stub",
   "tail": "从这些中选一个：none/stub/curl/fluff/spark",
   "pattern": "从这些中选一个：none/spots/stripe/belly",
-  "accessory": "从这些中选一个：none/flower/leaf/horn/gem",
-  "eyes": "从这些中选一个：dot/round/sleepy/sparkle",
+  "accessory": "从这些中选一个：none/flower/leaf/horn/gem/bow/bell",
+  "eyes": "从这些中选一个：dot/round/sleepy/sparkle/big/shy",
   "lore": "30-60字的原创图鉴描述，写它的栖息地和有趣习性，禁止引用任何现有作品"
 }
 注意：稀有度不由你决定（由系统掷点），不要输出 rarity 字段。`;
@@ -85,12 +85,12 @@ export function parseLlmPet(text) {
     types,
     bodyType: oneOf(raw.bodyType, ['quadruped', 'bipedal', 'avian', 'serpent', 'aquatic', 'mochi'], null),
     look: {
-      ears: oneOf(raw.ears, ['none', 'round', 'pointy', 'long', 'fin'], 'round'),
+      ears: oneOf(raw.ears, ['none', 'round', 'pointy', 'long', 'fin', 'fluffy', 'droopy', 'stub'], 'round'),
       tail: oneOf(raw.tail, ['none', 'stub', 'curl', 'fluff', 'spark'], 'stub'),
       pattern: oneOf(raw.pattern, ['none', 'spots', 'stripe', 'belly'], 'none'),
-      accessory: oneOf(raw.accessory, ['none', 'flower', 'leaf', 'horn', 'gem'], 'none'),
-      eyes: oneOf(raw.eyes, ['dot', 'round', 'sleepy', 'sparkle'], 'round'),
-      palette: Math.floor(Math.random() * 10),
+      accessory: oneOf(raw.accessory, ['none', 'flower', 'leaf', 'horn', 'gem', 'bow', 'bell'], 'none'),
+      eyes: oneOf(raw.eyes, ['dot', 'round', 'sleepy', 'sparkle', 'big', 'shy'], 'round'),
+      palette: Math.floor(Math.random() * 16),
     },
     lore: String(raw.lore ?? '').trim().slice(0, 120),
   };

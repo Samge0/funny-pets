@@ -3,7 +3,7 @@
 <head><meta charset="UTF-8" />
 <!-- import map：把裸模块名 'three' 映射到本地构建产物 -->
 <script type="importmap">
-{ "imports": { "three": "../node_modules/three/build/three.module.js" } }
+{ "imports": { "three": "../node_modules/three/build/three.module.js", "vue": "../node_modules/vue/dist/vue.runtime.esm-browser.prod.js" } }
 </script>
 </head>
 <body>
@@ -36,6 +36,18 @@
     defaultAlpha: 0.9,
   });
 
+  // v11 萌宠款：宣传页展示统一换成萌系外观（保留名字/属性/稀有度=精灵身份不变）。
+  // 注意：外观与游戏内同 seed 的随机 look 不对应——宣传页仅做展示
+  const CUTE_LOOKS = {
+    quadruped: { palette: 10, ears: 'fluffy', eyes: 'big',  tail: 'fluff', pattern: 'belly', accessory: 'bow'  },
+    bipedal:   { palette: 14, ears: 'droopy', eyes: 'big',  tail: 'stub',  pattern: 'none',  accessory: 'bell' },
+    avian:     { palette: 11, ears: 'none',  eyes: 'big',  tail: 'none',  pattern: 'none',  accessory: 'bow'  },
+    serpent:   { palette: 12, ears: 'stub',   eyes: 'shy',  tail: 'none',  pattern: 'none',  accessory: 'bell' },
+    aquatic:   { palette: 11, ears: 'none',  eyes: 'big',  tail: 'fluff', pattern: 'none',  accessory: 'bell' },
+    mochi:     { palette: 13, ears: 'stub',   eyes: 'big',  tail: 'none',  pattern: 'belly', accessory: 'bow'  },
+  };
+  for (const { pet, bt } of picked) pet.look = { ...CUTE_LOOKS[bt] };
+
   window.__results = [];
   for (const { pet, bt } of picked) {
     const scene = new THREE.Scene();
@@ -43,6 +55,9 @@
     cam.position.set(0, 1.05, 5.4);
     cam.lookAt(0, 0.05, 0);
     scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    // 半球补光（v10）：与 Pet3D.vue 同步——暗部柔化
+    const hemi = new THREE.HemisphereLight(0xeaf2ff, 0x8a7c66, 0.5);
+    scene.add(hemi);
     const key = new THREE.DirectionalLight(0xfff4e0, 2.0); key.position.set(2, 3, 4);
     const rim = new THREE.DirectionalLight(0xbfd0ff, 0.9); rim.position.set(-3, 1.5, -2);
     scene.add(key, rim);

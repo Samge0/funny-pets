@@ -11,18 +11,21 @@ export const BODY_SHAPES = [
 
 export const EARS = [
   { key: 'none', name: '无耳' },
-  { key: 'round', name: '圆耳', path: 'M 26 30 C 18 18 22 8 30 12 C 36 15 38 24 36 32 M 74 30 C 82 18 78 8 70 12 C 64 15 62 24 64 32' },
-  { key: 'pointy', name: '尖耳', path: 'M 28 32 L 20 8 L 40 24 M 72 32 L 80 8 L 60 24' },
-  { key: 'long', name: '长耳', path: 'M 32 30 C 24 16 22 4 28 4 C 34 4 38 18 38 30 M 68 30 C 76 16 78 4 72 4 C 66 4 62 18 62 30' },
-  { key: 'fin', name: '鱼鳍耳', path: 'M 26 34 C 14 28 10 16 18 14 C 26 12 34 22 34 32 M 74 34 C 86 28 90 16 82 14 C 74 12 66 22 66 32' },
+  { key: 'round', name: '圆耳' },
+  { key: 'pointy', name: '尖耳' },
+  { key: 'long', name: '长耳' },
+  { key: 'fin', name: '鱼鳍耳' },
+  { key: 'fluffy', name: '绒绒耳' },   // v11 萌宠包：圆胖三角毛耳（耳尖一撮奶毛）
+  { key: 'droopy', name: '折垂耳' },   // v11：软塌下垂小狗耳
+  { key: 'stub', name: '小圆短耳' },   // v11：小豆耳（幼态感）
 ];
 
 export const TAILS = [
   { key: 'none', name: '无尾' },
-  { key: 'stub', name: '短尾', path: 'M 76 66 C 86 64 90 58 88 54 C 86 50 80 52 78 58' },
-  { key: 'curl', name: '卷尾', path: 'M 76 68 C 90 66 94 54 86 50 C 80 47 76 52 80 56' },
-  { key: 'fluff', name: '绒尾', path: 'M 76 66 C 84 60 94 60 96 66 C 94 72 84 72 76 68 Z' },
-  { key: 'spark', name: '电尾', path: 'M 76 66 L 88 60 L 84 66 L 94 64 L 82 72' },
+  { key: 'stub', name: '短尾' },
+  { key: 'curl', name: '卷尾' },
+  { key: 'fluff', name: '绒尾' },
+  { key: 'spark', name: '电尾' },
 ];
 
 export const PATTERNS = [
@@ -33,6 +36,7 @@ export const PATTERNS = [
 ];
 
 // 身体主色池（饱和度友好，非任何角色的专属配色）
+// v11 萌宠包追加 6 色：马卡龙粉彩系（低饱和高明度，孩子/女生审美）
 export const PALETTES = [
   { body: '#f4a83c', belly: '#fce8c0', accent: '#d87a20' },
   { body: '#5ab8d8', belly: '#d8f0f8', accent: '#3088a8' },
@@ -44,6 +48,13 @@ export const PALETTES = [
   { body: '#6aa8e8', belly: '#d8e8fc', accent: '#3878b8' },
   { body: '#90a8b8', belly: '#e0e8ec', accent: '#607890' },
   { body: '#c8e868', belly: '#f4fcd8', accent: '#98b838' },
+  // ---- v11 马卡龙新色（10~15）----
+  { body: '#ffd6e0', belly: '#fff0f4', accent: '#e88aa8' },  // 10 樱花粉
+  { body: '#c3e8ff', belly: '#eef8ff', accent: '#7ab8e0' },  // 11 婴儿蓝
+  { body: '#d8ffd0', belly: '#f2fff0', accent: '#88c878' },  // 12 抹茶绿
+  { body: '#ffe8c8', belly: '#fff6e8', accent: '#e0b070' },  // 13 奶油杏
+  { body: '#e8d8ff', belly: '#f8f2ff', accent: '#b098e0' },  // 14 香芋紫
+  { body: '#fff0c8', belly: '#fffaf0', accent: '#e8c870' },  // 15 奶黄
 ];
 
 export const ACCESSORIES = [
@@ -52,6 +63,8 @@ export const ACCESSORIES = [
   { key: 'leaf', name: '叶芽' },
   { key: 'horn', name: '小角' },
   { key: 'gem', name: '额晶' },
+  { key: 'bow', name: '蝴蝶结' },      // v11：头侧蝴蝶结（萌系标配）
+  { key: 'bell', name: '铃铛' },       // v11：颈圈金铃铛
 ];
 
 export const EYE_STYLES = [
@@ -59,4 +72,6 @@ export const EYE_STYLES = [
   { key: 'round', name: '圆眼' },
   { key: 'sleepy', name: '眯眯眼' },
   { key: 'sparkle', name: '星星眼' },
+  { key: 'big', name: '葡葡大眼' },    // v11：超比例大圆眼（婴儿图式核心）
+  { key: 'shy', name: '弯弯笑眼' },    // v11：两道向下弯弧（笑成月牙）
 ];

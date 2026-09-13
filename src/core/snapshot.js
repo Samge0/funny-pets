@@ -22,6 +22,9 @@ function renderOnce(pet, size, resolve) {
   cam.lookAt(0, 0.05, 0);
 
   scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  // 半球补光（v10）：与 Pet3D.vue 同步——暗部柔化
+  const hemi = new THREE.HemisphereLight(0xeaf2ff, 0x8a7c66, 0.5);
+  scene.add(hemi);
   const key = new THREE.DirectionalLight(0xfff4e0, 2.0); key.position.set(2, 3, 4);
   const rim = new THREE.DirectionalLight(0xbfd0ff, 0.9); rim.position.set(-3, 1.5, -2);
   scene.add(key, rim);
@@ -63,7 +66,7 @@ function renderOnce(pet, size, resolve) {
   scene.traverse(obj => {
     obj.geometry?.dispose?.();
     const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-    mats.forEach(m => m?.dispose?.());
+    mats.forEach(m => { if (!m?.userData?.shared) m?.dispose?.(); }); // shared=跨实例共享材质，不销毁
   });
   resolve(url);
 }

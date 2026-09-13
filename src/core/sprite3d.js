@@ -84,7 +84,7 @@ function createGradientMap() {
 function materials(pet) {
   const pal = paletteOf(pet);
   return {
-    body: toonMat(pal.body),
+    body: makeBodyMaterial(pal),
     belly: toonMat(pal.belly),
     accent: toonMat(pal.accent),
     type: toonMat(pal.type),
@@ -92,6 +92,102 @@ function materials(pet) {
     white: toonMat(new THREE.Color(0xffffff)),
     glow: new THREE.MeshBasicMaterial({ color: pal.type, transparent: true, opacity: 0.65 }),
   };
+}
+
+// ---- v10 建模质感增强：体型渐变贴图 / 接触阴影 / 眼部高光 ----
+// 共享灰度渐变贴图（白色→浅灰 + 细噪点）：作为 .map 与材质 color 相乘，
+// 一张贴图给所有配色实现「头侧略亮、腹侧略暗」的体积感，避免纯色塑料感。
+// Node 环境（引擎测试直接 import）无 document → 退回纯色材质。
+let _bodyTex = null;
+function bodyGradientTexture() {
+  if (_bodyTex) return _bodyTex;
+  if (typeof document === 'undefined') return null;
+  const c = document.createElement('canvas');
+  c.width = 32; c.height = 64;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 64);
+  grad.addColorStop(0, 'rgb(255,255,255)');   // 头侧（UV v=1）不衰减
+  grad.addColorStop(0.55, 'rgb(244,244,244)');
+  grad.addColorStop(1, 'rgb(206,206,206)');   // 腹侧约 -19% 亮度
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 32, 64);
+  // 细碎噪点：打破大面积同色的「塑料壳」观感（±3% 内，不影响 toon 色阶）
+  for (let i = 0; i < 160; i++) {
+    const v = 236 + Math.floor(Math.random() * 20);
+    ctx.fillStyle = `rgb(${v},${v},${v})`;
+    ctx.fillRect(Math.floor(Math.random() * 32), Math.floor(Math.random() * 64), 1, 1);
+  }
+  _bodyTex = new THREE.CanvasTexture(c);
+  _bodyTex.colorSpace = THREE.SRGBColorSpace;
+  return _bodyTex;
+}
+
+function makeBodyMaterial(pal) {
+  const tex = bodyGradientTexture();
+  const mat = new THREE.MeshToonMaterial({
+    color: pal.body,
+    gradientMap: createGradientMap(),
+    ...(tex ? { map: tex } : {}),
+  });
+  return mat;
+}
+
+let _shadowTex = null;
+function contactShadowTexture() {
+  if (_shadowTex) return _shadowTex;
+  if (typeof document === 'undefined') return null;
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 128;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createRadialGradient(64, 64, 6, 64, 64, 62);
+  grad.addColorStop(0, 'rgba(18,22,38,0.40)');
+  grad.addColorStop(0.55, 'rgba(18,22,38,0.20)');
+  grad.addColorStop(1, 'rgba(18,22,38,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+  _shadowTex = new THREE.CanvasTexture(c);
+  return _shadowTex;
+}
+
+// 接触软阴影：径向渐变贴地方片，无描边（OutlineEffect visible=false）。
+// 挂在 group 底部；Pet3D 每帧按跳跃高度调透明度/尺寸（呼吸/跳跃时阴影联动）。
+function makeContactShadow() {
+  const tex = contactShadowTexture();
+  if (!tex) return null;
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0.9 });
+  mat.userData.outlineParameters = { visible: false, keepAlive: true };
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.2), mat);
+  m.rotation.x = -Math.PI / 2;
+  m.name = 'contactShadow';
+  m.renderOrder = -1;
+  return m;
+}
+
+// 高光点材质：白色 + 无描边（outlineParameters.visible=false）+ 不受光（MeshBasic 保持纯白）。
+// 全局共享（跨构建/跨宠物），标记 userData.shared：Pet3D/snapshot 的 dispose 跳过销毁
+let _glintMat = null;
+function glintMaterial() {
+  if (_glintMat) return _glintMat;
+  _glintMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  _glintMat.userData.outlineParameters = { visible: false, keepAlive: true };
+  _glintMat.userData.shared = true;
+  return _glintMat;
+}
+
+// 内耳廓（v10）：耳内一片 belly 色小面片，给耳朵体积感/结构感。
+// 用 belly 色的独立克隆材质并关描边（OutlineEffect 只读 material.userData；
+// 若直接共享 M.belly 会把肚皮等所有 belly 件的描边一起关掉）
+function innerEarMesh(M, kind, size, delta = {}) {
+  const dz = delta.dz ?? -size * 0.45;   // 向耳根方向内嵌，避免悬空
+  const s = delta.scale ?? 0.55;
+  let geo;
+  if (kind === 'pointy') geo = new THREE.ConeGeometry(size * 0.5 * s, size * 1.15 * s, 6);
+  else geo = new THREE.SphereGeometry(size * s, 8, 6);
+  const mat = M.belly.clone();
+  mat.userData.outlineParameters = { visible: false, keepAlive: true };
+  const inner = new THREE.Mesh(geo, mat);
+  inner.position.set(0, delta.dy ?? size * 0.12, dz);
+  return inner;
 }
 
 // 眼睛（所有体态共用；可选眉毛）。返回组带 userData.blink = true：Pet3D 眨眼动画按 scaleY 压扁
@@ -111,6 +207,36 @@ function makeEyes(M, L, x0, y, z, scale = 1, withBrow = false) {
       const dot = new THREE.Mesh(new THREE.SphereGeometry(r * 0.55, 10, 8), M.dark);
       dot.position.set(s * x0, y, z);
       g.add(dot);
+    } else if (L.eyes === 'big') {
+      // 葡萄大眼（v11 婴儿图式核心）：1.85× 超比例大眼球 + 大瞳 + 双高光
+      const white = new THREE.Mesh(new THREE.SphereGeometry(r * 1.85, 16, 12), M.white);
+      white.scale.z = 0.5;
+      white.position.set(s * x0, y, z);
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(r * 1.12, 14, 10), M.dark);
+      pupil.scale.z = 0.45;
+      pupil.position.set(s * x0 * 1.02, y, z + 0.1 * scale);
+      g.add(white, pupil);
+      const glint = new THREE.Mesh(new THREE.SphereGeometry(r * 0.34, 8, 6), M.white);
+      glint.material = glintMaterial();
+      glint.position.set(s * x0 - r * 0.5, y + r * 0.55, z + 0.22 * scale);
+      g.add(glint);
+      const glint2 = new THREE.Mesh(new THREE.SphereGeometry(r * 0.18, 8, 6), M.white);
+      glint2.material = glintMaterial();
+      glint2.position.set(s * x0 + r * 0.42, y - r * 0.5, z + 0.22 * scale);
+      g.add(glint2);
+    } else if (L.eyes === 'shy') {
+      // 弯弯笑眼（v11）：∪∪ 微笑弧（rotation.z=π 把上半弧翻成下半弧）+眼尾小点。
+      // 弧面必须在 XY 平面正对相机——加 rotation.y=π/2 会侧对相机变成竖条（已踩坑）；
+      // 弧半径封顶 x0*0.5：∪ 弧内端点在弧顶高度，超过眼距一半时两弧内端
+      // 在脸中央几乎相碰成「m 形眼镜」（已两次踩坑，0.8 仍不够）
+      const ar = Math.min(r * 1.15, x0 * 0.5);
+      const arc = new THREE.Mesh(new THREE.TorusGeometry(ar, 0.03 * scale, 6, 16, Math.PI), M.dark);
+      arc.rotation.z = Math.PI;
+      arc.position.set(s * x0, y, z + 0.04 * scale);
+      g.add(arc);
+      const lash = new THREE.Mesh(new THREE.SphereGeometry(0.018 * scale, 6, 6), M.dark);
+      lash.position.set(s * x0 + s * ar, y - ar * 0.15, z);
+      g.add(lash);
     } else {
       const white = new THREE.Mesh(new THREE.SphereGeometry(r * 1.45, 14, 12), M.white);
       white.scale.z = 0.55;
@@ -119,6 +245,12 @@ function makeEyes(M, L, x0, y, z, scale = 1, withBrow = false) {
       pupil.scale.z = 0.5;
       pupil.position.set(s * x0 * 1.03, y, z + 0.08 * scale);
       g.add(white, pupil);
+      // 眼神光点（v10）：大眼球左上一颗白高光——「死鱼眼→有神」的关键一刀；
+      // 无描边（否则高光点外圈描边比点本身还粗，远看像长了白爪）
+      const glint = new THREE.Mesh(new THREE.SphereGeometry(r * 0.24, 8, 6), M.white);
+      glint.material = glintMaterial();
+      glint.position.set(s * x0 - r * 0.42, y + r * 0.45, z + 0.17 * scale);
+      g.add(glint);
       if (L.eyes === 'sparkle') {
         const star = new THREE.Mesh(new THREE.OctahedronGeometry(r * 0.42), M.white);
         star.position.set(s * x0 + r * 0.4, y + r * 0.4, z + 0.12 * scale);
@@ -197,7 +329,39 @@ function makeAccessoryOnly(M, L, scale = 1) {
   } else if (L.accessory === 'horn') {
     const horn = new THREE.Mesh(new THREE.ConeGeometry(0.09 * scale * 4, 0.34 * scale * 4, 8), M.type);
     g.add(horn);
+  } else if (L.accessory === 'bow') {
+    // 蝴蝶结（v11 萌宠包）：双环+中心结，头侧佩戴
+    const bowMat = toonMat(new THREE.Color(0xe86a8a));
+    for (const dir of [-1, 1]) {
+      const loop = new THREE.Mesh(new THREE.SphereGeometry(0.09 * scale * 4, 10, 8), bowMat);
+      loop.scale.set(1.25, 0.75, 0.45);
+      loop.position.set(dir * 0.09 * scale * 4, 0.02 * scale * 4, 0);
+      loop.rotation.z = dir * 0.35;
+      g.add(loop);
+    }
+    const knot = new THREE.Mesh(new THREE.SphereGeometry(0.045 * scale * 4, 8, 8), toonMat(new THREE.Color(0xc04868)));
+    g.add(knot);
   }
+  return g;
+}
+
+// 铃铛颈圈（v11 萌宠包）：色圈 + 金铃铛。各骨架按颈位/半径挂（mochi 挂身高 2/3 处）。
+function makeBellCollar(M, radius, y) {
+  const g = new THREE.Group();
+  const strap = new THREE.Mesh(new THREE.TorusGeometry(radius, 0.045, 8, 22), M.type);
+  strap.rotation.x = Math.PI / 2;
+  strap.scale.z = 0.8;
+  g.add(strap);
+  const bell = new THREE.Mesh(new THREE.SphereGeometry(0.085, 12, 10), toonMat(new THREE.Color(0xf4c531)));
+  bell.scale.y = 0.9;
+  // 固定小垂距（不随 radius 缩放）：mochi 大圈(radius 0.7)时 -radius*0.92 会把铃铛
+  // 垂到身体底下悬空（已踩坑）；z=radius 让铃铛贴圈前缘正面可见
+  bell.position.set(0, -0.06, radius);
+  g.add(bell);
+  const bellDot = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 6), toonMat(new THREE.Color(0x8a6a10)));
+  bellDot.position.set(0, -0.115, radius + 0.01);
+  g.add(bellDot);
+  g.position.y = y;
   return g;
 }
 
@@ -255,16 +419,27 @@ function makeEars(M, L, headR, s) {
   if (L.ears === 'round') {
     const ear = new THREE.Mesh(new THREE.SphereGeometry(headR * 0.3, 14, 12), M.body);
     ear.position.set(ex, headR * 0.85, 0);
+    // 内耳廓：belly 色小圆片贴耳前侧（体积感/结构感）
+    const inner = innerEarMesh(M, 'round', headR * 0.3, { dz: headR * 0.16, dy: -headR * 0.01 });
+    inner.scale.z = 0.32;
+    ear.add(inner);
     g.add(ear);
   } else if (L.ears === 'pointy') {
     const ear = new THREE.Mesh(new THREE.ConeGeometry(headR * 0.24, headR * 0.75, 10), M.body);
     ear.position.set(headR * 0.5 * s, headR * 0.95, 0);
     ear.rotation.z = -0.35 * s;
+    // 内耳：小锥贴耳前缘（旋转绕 z 轴，局部 +z 仍朝相机）
+    const inner = innerEarMesh(M, 'pointy', headR * 0.24, { dy: headR * 0.13, dz: headR * 0.06 });
+    ear.add(inner);
     g.add(ear);
   } else if (L.ears === 'long') {
     const ear = new THREE.Mesh(new THREE.CapsuleGeometry(headR * 0.16, headR * 0.8, 4, 10), M.body);
     ear.position.set(headR * 0.45 * s, headR * 1.1, 0);
     ear.rotation.z = -0.18 * s;
+    // 内耳：长耳垂内片（兔耳感）
+    const inner = innerEarMesh(M, 'round', headR * 0.16, { dz: headR * 0.07, dy: headR * 0.12 });
+    inner.scale.set(0.55, 1.5, 0.32);
+    ear.add(inner);
     g.add(ear);
   } else if (L.ears === 'fin') {
     const fin = new THREE.Mesh(new THREE.SphereGeometry(headR * 0.36, 12, 10), M.type);
@@ -272,6 +447,26 @@ function makeEars(M, L, headR, s) {
     fin.position.set(headR * 0.75 * s, headR * 0.75, 0);
     fin.rotation.z = 0.5 * s;
     g.add(fin);
+  } else if (L.ears === 'fluffy') {
+    // 绒绒耳（v11 萌宠包）：圆胖三角 + 耳尖一撮 belly 色奶毛
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(headR * 0.3, headR * 0.7, 9), M.body);
+    ear.position.set(headR * 0.55 * s, headR * 0.9, 0);
+    ear.rotation.z = -0.2 * s;
+    const tuft = new THREE.Mesh(new THREE.SphereGeometry(headR * 0.13, 8, 8), M.belly);
+    tuft.position.set(0, headR * 0.3, 0);
+    ear.add(tuft);
+    g.add(ear);
+  } else if (L.ears === 'droopy') {
+    // 折垂耳（v11）：软塌下垂小狗耳——附着点在耳根上方，耳片向下外侧垂
+    const ear = new THREE.Mesh(new THREE.CapsuleGeometry(headR * 0.15, headR * 0.7, 4, 10), M.body);
+    ear.position.set(headR * 0.78 * s, headR * 0.5, 0);
+    ear.rotation.z = -s * 0.5;
+    g.add(ear);
+  } else if (L.ears === 'stub') {
+    // 小豆耳（v11）：幼态感迷你圆耳
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(headR * 0.17, 10, 8), M.body);
+    ear.position.set(headR * 0.55 * s, headR * 0.92, 0);
+    g.add(ear);
   }
   return g;
 }
@@ -344,7 +539,9 @@ export function buildPet3D(pet) {
   const M = materials(pet);
   const phase = pet.phase ?? 0;
   const L = {
-    eyeSize: 0.85 + rng() * 0.55,
+    // v11 婴儿图式：眼下限从 0.85 抬到 1.05（平均眼距/眼径双升=萌感核心）；
+    // 只改概率不改 rng() 调用次数——既有 seed 的外观映射保持稳定
+    eyeSize: 1.05 + rng() * 0.5,
     // 分享数据可能缺字段：一律兜底（缺 ears/tail 等于 'none'，缺 palette 已在 paletteOf 兜）
     eyes: pet.look?.eyes ?? 'round',
     ears: pet.look?.ears ?? 'none',
@@ -357,16 +554,25 @@ export function buildPet3D(pet) {
     bodyH: 0.9 + rng() * 0.28,        // 躯干高度
     legLen: 0.85 + rng() * 0.4,       // 腿长
     headTilt: (rng() - 0.5) * 0.3,    // 歪头
-    cheek: rng() < 0.45,              // 腮红
-    brow: rng() < 0.35,               // 眉毛（气势）
-    fangPair: rng() < 0.4,            // 外露小獠牙
-    collar: rng() < 0.25,             // 颈圈/围巾
+    cheek: rng() < 0.65,              // 腮红（v11：0.45→0.65 萌感标配）
+    brow: rng() < 0.18,               // 眉毛（v11：0.35→0.18 凶相减半）
+    fangPair: rng() < 0.25,           // 外露小獠牙（v11：0.4→0.25 少兽相多萌相）
+    collar: rng() < 0.15,             // 颈圈/围巾（v11：0.25→0.15 让位铃铛配饰）
   };
   const bodyType = bodyTypeBiased(pet);
 
   const group = new THREE.Group();
   const sway = { amp: 0.05 + rng() * 0.04, speed: 0.7 + rng() * 0.5 };
-  const parts = { wings: [], tail: null, head: null, bodyRoot: null, halo: null, legs: [], eyes: null };
+  const parts = { wings: [], tail: null, head: null, bodyRoot: null, halo: null, legs: [], eyes: null, shadow: null };
+
+  // ---- 共通：接触软阴影（v10 接地感）----
+  // y=-1.14 在脚底(-0.9~-1.0)与地面光环(-0.95)之下；Pet3D 每帧按跳跃高度联动透明度
+  const shadow = makeContactShadow();
+  if (shadow) {
+    shadow.position.y = -1.14;
+    group.add(shadow);
+    parts.shadow = shadow;
+  }
 
   // ---- 各体态骨架 ----
   if (bodyType === 'quadruped') buildQuadruped();
@@ -480,6 +686,9 @@ export function buildPet3D(pet) {
   // ---- 动画 ----
   const update = (t) => {
     group.position.y = Math.sin(t * 1.8) * 0.06;
+    // 阴影钉地（v10）：抵消身体浮动，阴影始终贴在 y=-1.14 平面——
+    // 否则阴影随身体一起浮动，接地感为零（影子必须定住，身体浮沉才有参照）
+    if (parts.shadow) parts.shadow.position.y = -1.14 - group.position.y;
     group.rotation.y = Math.sin(t * sway.speed) * sway.amp;
     for (const w of parts.wings) w.rotation.z = (w.userData.side ?? 1) * (0.35 + Math.sin(t * 4.5) * 0.45);
     if (parts.tail) parts.tail.rotation.y = Math.sin(t * 2.2) * 0.35;
@@ -505,6 +714,16 @@ export function buildPet3D(pet) {
     const body = new THREE.Mesh(new THREE.SphereGeometry(0.62, 26, 20), M.body);
     body.scale.set(1.5 * L.bodyW, L.bodyH, L.bodyW);
     root.add(body);
+    // 形体分瓣（v10）：臀大肌/胸两团次级体积——从「一坨椭球」到有起伏的动物躯干剪影，
+    // 每瓣自己的明暗交界线让 toon 色阶读出结构
+    const haunch = new THREE.Mesh(new THREE.SphereGeometry(0.44, 22, 16), M.body);
+    haunch.scale.set(0.75 * L.bodyW, 0.85 * L.bodyH, 1.0 * L.bodyW);
+    haunch.position.set(-0.55, -0.26, 0);
+    root.add(haunch);
+    const chest = new THREE.Mesh(new THREE.SphereGeometry(0.4, 20, 14), M.body);
+    chest.scale.set(0.7 * L.bodyW, 0.8 * L.bodyH, 0.95 * L.bodyW);
+    chest.position.set(0.52, -0.24, 0);
+    root.add(chest);
 
     // 肚皮
     if (L.pattern === 'belly') {
@@ -526,6 +745,10 @@ export function buildPet3D(pet) {
     snout.scale.set(1.3, 0.7, 0.8);
     snout.position.set(headR * 0.85, -headR * 0.15, 0);
     headGroup.add(snout);
+    // 鼻头（v10）：深色小椭球收住吻部末端，口鼻区一眼读完
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(headR * 0.14, 10, 8), M.dark);
+    nose.position.set(headR * 1.38, -headR * 0.06, 0);
+    headGroup.add(nose);
     headGroup.add(parts.eyes = makeEyes(M, L, headR * 0.45, headR * 0.2, headR * 0.75, 0.9, L.brow));
     headGroup.add(makeMouth(M, L, -headR * 0.35, headR * 0.9, 0.8));
     if (L.fangPair) headGroup.add(makeFangs(M, -headR * 0.42, headR * 0.85, 0.8));
@@ -566,6 +789,19 @@ export function buildPet3D(pet) {
         horn.rotation.z = 0.3 * s;
         headGroup.add(horn);
       }
+    }
+    // v11 萌宠包：蝴蝶结（头侧）+ 铃铛颈圈（独立于头部配饰链）
+    if (L.accessory === 'bow') {
+      const bow = makeAccessoryOnly(M, L, 0.28);
+      bow.position.set(-headR * 0.72, headR * 0.6, headR * 0.3);
+      bow.rotation.set(0, -0.5, 0.35);
+      headGroup.add(bow);
+    }
+    if (L.accessory === 'bell') {
+      const bc = makeBellCollar(M, 0.29, 0.26);
+      bc.position.x = 0.52;
+      bc.rotation.y = Math.PI / 2; // 铃铛朝头向（+x）
+      root.add(bc);
     }
     // 头角
     if (rng() < 0.35 && L.accessory === 'none') {
@@ -623,12 +859,16 @@ export function buildPet3D(pet) {
     if (L.pattern === 'spots' || rng() < 0.3) {
       root.add(makeSpikes(M, L, 3 + phase, t => [0, -0.3 - t * 0.7], 0.68));
     }
-    // 斑点
+    // 斑点（v10：正面扇区固定排布——此前 rng 散布一半落在背面/被体侧吞掉；
+    // 双排 2×2 立在身体前侧面，吞噬 spots 一眼可辨）
     if (L.pattern === 'spots') {
       for (let i = 0; i < 4; i++) {
-        const spot = new THREE.Mesh(new THREE.SphereGeometry(0.07 + rng() * 0.04, 10, 8), M.accent);
-        spot.position.set((rng() - 0.5) * 1.1, 0.2 + rng() * 0.3, (rng() - 0.5) * 0.9);
-        spot.scale.z = 0.4;
+        const sx = (i % 2 === 0 ? -1 : 1) * 0.32;
+        const sy = 0.08 + Math.floor(i / 2) * 0.34;
+        const sz = Math.sqrt(Math.max(0, 1 - (sx / (0.93 * L.bodyW)) ** 2)) * 0.62 * L.bodyW;
+        const spot = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), M.accent);
+        spot.position.set(sx, sy, sz);
+        spot.scale.z = 0.42;
         root.add(spot);
       }
     }
@@ -716,10 +956,18 @@ export function buildPet3D(pet) {
       horn.rotation.x = 0.3;
       headGroup.add(horn);
     }
+    // v11 萌宠包：蝴蝶结（头侧）+ 铃铛颈圈
+    if (L.accessory === 'bow') {
+      const bow = makeAccessoryOnly(M, L, 0.3);
+      bow.position.set(headR * 0.78, headR * 0.66, headR * 0.28);
+      bow.rotation.set(0, -0.45, 0.3);
+      headGroup.add(bow);
+    }
     root.add(headGroup);
     parts.head = headGroup;
     // 基础朝向存档：关节动画以它为基准增量旋转（直接归零会抹掉骨架歪头/前倾——落枕感根因）
     parts.head.userData.baseRot = headGroup.rotation.clone();
+    if (L.accessory === 'bell') root.add(makeBellCollar(M, 0.34, 0.5));
 
     // 短前肢
     for (const s of [-1, 1]) {
@@ -833,6 +1081,13 @@ export function buildPet3D(pet) {
       horn.position.set(0, headR * 1.45, 0);
       headGroup.add(horn);
     }
+    // v11 萌宠包：蝴蝶结（头侧）
+    if (L.accessory === 'bow') {
+      const bow = makeAccessoryOnly(M, L, 0.22);
+      bow.position.set(headR * 0.85, headR * 0.85, headR * 0.2);
+      bow.rotation.set(0, -0.45, 0.25);
+      headGroup.add(bow);
+    }
     root.add(headGroup);
     parts.head = headGroup;
     // 基础朝向存档：关节动画以它为基准增量旋转（直接归零会抹掉骨架歪头/前倾——落枕感根因）
@@ -841,6 +1096,9 @@ export function buildPet3D(pet) {
     // 尾羽（avian 此前不渲染 look.tail——吞来尾巴无效果）
     parts.tail = makeTail(M, L, 0, 0.35, -0.62, 1.5);
     root.add(parts.tail);
+
+    // v11 萌宠包：铃铛挂身体前上段（鸟无颈，圈面朝 z 轴横放胸前）
+    if (L.accessory === 'bell') root.add(makeBellCollar(M, 0.3, 0.42));
 
     // 大翅膀（有扇动动画）
     for (const s of [-1, 1]) {
@@ -976,10 +1234,24 @@ export function buildPet3D(pet) {
       horn.position.set(0, headR * 1.05, headR * 0.3);
       headGroup.add(horn);
     }
+    // v11 萌宠包：蝴蝶结（头侧）
+    if (L.accessory === 'bow') {
+      const bow = makeAccessoryOnly(M, L, 0.24);
+      bow.position.set(headR * 0.8, headR * 0.55, headR * 0.5);
+      bow.rotation.set(0, -0.5, 0.3);
+      headGroup.add(bow);
+    }
     root.add(headGroup);
     parts.head = headGroup;
     // 基础朝向存档：关节动画以它为基准增量旋转（直接归零会抹掉骨架歪头/前倾——落枕感根因）
     parts.head.userData.baseRot = headGroup.rotation.clone();
+
+    // v11 萌宠包：铃铛挂第一节身体（蛇无颈，圈立在第一节前段）
+    if (L.accessory === 'bell') {
+      const bc = makeBellCollar(M, 0.3, -0.5);
+      bc.position.z = 0.12;
+      root.add(bc);
+    }
 
     // 尾巴：抬到尾梢上方并放大（此前被蛇身遮住看不见，吞噬尾巴无效果）
     parts.tail = makeTail(M, L, 0.5, 0.45, 0.15, 1.3);
@@ -1111,6 +1383,20 @@ export function buildPet3D(pet) {
       horn.position.set(0, headR * 1.1, headR * 0.2);
       headGroup.add(horn);
     }
+    // v11 萌宠包：蝴蝶结（头侧）
+    if (L.accessory === 'bow') {
+      const bow = makeAccessoryOnly(M, L, 0.24);
+      bow.position.set(headR * 0.85, headR * 0.5, headR * 0.3);
+      bow.rotation.set(0, -0.5, 0.3);
+      headGroup.add(bow);
+    }
+    // v11 萌宠包：铃铛挂身体前段（头后一圈）
+    if (L.accessory === 'bell') {
+      const bc = makeBellCollar(M, 0.32, 0.08);
+      bc.position.x = 0.18;
+      bc.rotation.y = Math.PI / 2;
+      root.add(bc);
+    }
 
     group.add(root);
   }
@@ -1126,8 +1412,9 @@ export function buildPet3D(pet) {
     body.position.y = -0.1;
     root.add(body);
     // 肚皮/花纹统一由 makeBodyPattern 渲染（此前固定 belly 片导致吞 belly 无效果）
-    // 花纹（mochi 此前无 spots/stripe 渲染）
-    root.add(makeBodyPattern(M, L, 0.52, { y0: 0.22 }));
+    // 花纹（mochi）：y0 压到 0.05——y0=0.22 时 rim 环(r0.42)上缘 y=0.64 超过头顶 0.55，
+    // 金色 rim 从头顶戳出像发箍（存量 bug v11 修复）
+    root.add(makeBodyPattern(M, L, 0.52, { y0: 0.05 }));
 
     // 脸直接长在身上（无独立头）
     const faceY = 0.18;
@@ -1150,6 +1437,7 @@ export function buildPet3D(pet) {
     // （原 parts.head = ahoge 移除）
 
     // 耳朵（mochi 此前不渲染——吞来耳朵无效果；团子脸两侧挂小耳）
+    // v10：与 makeEars 同步补内耳廓（belly 色小片，关描边）
     if (L.ears !== 'none') {
       for (const s of [-1, 1]) {
         let ear;
@@ -1157,10 +1445,32 @@ export function buildPet3D(pet) {
           ear = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.3, 8), M.body);
           ear.position.set(0.5 * s, 0.42, 0);
           ear.rotation.z = -0.6 * s;
+          const inner = innerEarMesh(M, 'pointy', 0.1, { dy: 0.07, dz: 0.03 });
+          ear.add(inner);
+        } else if (L.ears === 'fluffy') {
+          // v11：绒绒耳（团子版小尺寸，带奶毛尖）
+          ear = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.28, 9), M.body);
+          ear.position.set(0.52 * s, 0.42, 0);
+          ear.rotation.z = -0.45 * s;
+          const tuft = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), M.belly);
+          tuft.position.set(0, 0.12, 0);
+          ear.add(tuft);
+        } else if (L.ears === 'droopy') {
+          // v11：折垂耳（团子脸侧向下垂）
+          ear = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, 0.28, 4, 10), M.body);
+          ear.position.set(0.56 * s, 0.26, 0);
+          ear.rotation.z = -s * 0.5;
+        } else if (L.ears === 'stub') {
+          // v11：小豆耳
+          ear = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), M.body);
+          ear.position.set(0.5 * s, 0.42, 0);
         } else if (L.ears === 'long') {
           ear = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.4, 4, 10), M.body);
           ear.position.set(0.42 * s, 0.6, 0);
           ear.rotation.z = -0.35 * s;
+          const inner = innerEarMesh(M, 'round', 0.08, { dy: 0.05, dz: 0.045 });
+          inner.scale.set(0.5, 1.4, 0.3);
+          ear.add(inner);
         } else if (L.ears === 'fin') {
           ear = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), M.type);
           ear.scale.set(0.3, 1, 0.8);
@@ -1169,6 +1479,9 @@ export function buildPet3D(pet) {
         } else { // round
           ear = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 10), M.body);
           ear.position.set(0.5 * s, 0.4, 0);
+          const inner = innerEarMesh(M, 'round', 0.14, { dy: -0.01, dz: 0.08 });
+          inner.scale.z = 0.3;
+          ear.add(inner);
         }
         root.add(ear);
       }
@@ -1218,6 +1531,16 @@ export function buildPet3D(pet) {
       horn.position.set(0, 0.86, 0);
       root.add(horn);
     }
+    // v11 萌宠包：蝴蝶结（头顶偏侧——mochi 的呆毛位被 bow 替换视觉不打架）
+    if (L.accessory === 'bow') {
+      const bow = makeAccessoryOnly(M, L, 0.3);
+      bow.position.set(0.3, 0.72, 0.12);
+      bow.rotation.set(0, -0.4, 0.4);
+      root.add(bow);
+    }
+    // v11 萌宠包：铃铛围坐姿身体（腹部高度——脸在 y≈0.18，圈放 y=-0.22 不遮五官，
+    // 此前 y=0.28 粉带横穿眼睛像「眼镜带」，已踩坑）
+    if (L.accessory === 'bell') root.add(makeBellCollar(M, 0.7, -0.22));
 
     group.add(root);
   }

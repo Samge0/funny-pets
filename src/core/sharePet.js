@@ -48,11 +48,11 @@ export function encodeSharePet(pet) {
 const BODY_TYPES = ['quadruped', 'bipedal', 'avian', 'serpent', 'aquatic', 'mochi'];
 const LOOK_ENUMS = {
   body: ['round', 'pear', 'tall', 'blob', 'drop'],
-  ears: ['none', 'round', 'pointy', 'long', 'fin'],
+  ears: ['none', 'round', 'pointy', 'long', 'fin', 'fluffy', 'droopy', 'stub'],
   tail: ['none', 'stub', 'curl', 'fluff', 'spark'],
   pattern: ['none', 'spots', 'stripe', 'belly'],
-  accessory: ['none', 'flower', 'leaf', 'horn', 'gem'],
-  eyes: ['dot', 'round', 'sleepy', 'sparkle'],
+  accessory: ['none', 'flower', 'leaf', 'horn', 'gem', 'bow', 'bell'],
+  eyes: ['dot', 'round', 'sleepy', 'sparkle', 'big', 'shy'],
 };
 const RARITIES = ['common', 'uncommon', 'rare', 'epic', 'legend'];
 const STAT_KEYS = ['hp', 'atk', 'def', 'spd'];
@@ -183,7 +183,7 @@ function validatePet(o) {
     pattern: oneOf(lk.pattern, LOOK_ENUMS.pattern, 'none'),
     accessory: oneOf(lk.accessory, LOOK_ENUMS.accessory, 'none'),
     eyes: oneOf(lk.eyes, LOOK_ENUMS.eyes, 'round'),
-    palette: clampInt(lk.palette, 0, 9, 0),
+    palette: clampInt(lk.palette, 0, 15, 0),
   };
 
   // extraParts：上限 8 件（渲染叠件锚点按 index 布局，超大数组会拖垮渲染）

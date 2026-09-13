@@ -113,6 +113,9 @@ function init() {
   camera.lookAt(0, 0.05, 0);
 
   scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  // 半球补光（v10）：天空色/地面色柔化暗部——纯 ambient 下暗面死黑无细节
+  const hemi = new THREE.HemisphereLight(0xeaf2ff, 0x8a7c66, 0.5);
+  scene.add(hemi);
   const key = new THREE.DirectionalLight(0xfff4e0, 2.0); key.position.set(2, 3, 4);
   const rim = new THREE.DirectionalLight(0xbfd0ff, 0.9); rim.position.set(-3, 1.5, -2);
   scene.add(key, rim);
@@ -188,6 +191,16 @@ function init() {
     const tapHop = hopAge < 500 ? Math.sin(hopAge / 500 * Math.PI) * 0.32 : 0;
     const hop = act?.kind === 'dance' ? Math.abs(Math.sin((now - act.start) / act.dur * Math.PI * 8)) * 0.12 : 0;
     pet3d.group.position.y = baseY + hop + tapHop + Math.sin(t * 1.8) * 0.06;
+    // 接触阴影联动（v10）：整体抬升量（跳/舞/呼吸）全部计入贴地补偿，
+    // 且离地越高阴影越淡越小——影子只在地面附近才浓
+    const sh = pet3d.parts?.shadow;
+    if (sh) {
+      const air = Math.min(1, (hop + tapHop) / 0.35);
+      sh.position.y = -1.14 - pet3d.group.position.y;
+      sh.material.opacity = 0.9 * (1 - air * 0.75);
+      const ss = 1 - air * 0.25;
+      sh.scale.set(ss, 1, ss);
+    }
     effect.render(scene, camera);
   };
   loop();
@@ -247,7 +260,7 @@ function dispose() {
     if (obj.geometry) obj.geometry.dispose?.();
     if (obj.material) {
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-      mats.forEach(m => m.dispose?.());
+      mats.forEach(m => { if (!m.userData?.shared) m.dispose?.(); }); // shared=跨实例共享材质，不销毁
     }
   });
   scene = null; pet3d = null;
