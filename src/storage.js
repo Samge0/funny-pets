@@ -2,6 +2,7 @@
 // v2：level 上限不变，phase 允许 0-2，加收 collection 元数据。
 
 import { t } from './core/i18n.js';
+import { sanitizeColors } from './core/paint.js';
 
 const SAVE_KEY = 'funny-pets-save-v1';
 const LLM_KEY = 'funny-pets-llm-v1';
@@ -31,6 +32,15 @@ export function validateSave(value) {
   if (value.giftClaimed === undefined) value.giftClaimed = [];
   if (!Array.isArray(value.giftClaimed)) throw new Error('giftClaimed 无效');
   value.giftClaimed = value.giftClaimed.filter(x => typeof x === 'string').slice(0, 200);
+  // 涂色数据（v12）：存档路径容错——逐槽校验，非法值静默丢弃，不拒绝整个存档。
+  // paint.js 无 three/vue 重依赖，同步 import 安全
+  for (const p of value.pets) {
+    if (p.look && p.look.colors !== undefined) {
+      const clean = sanitizeColors(p.look.colors);
+      if (clean) p.look.colors = clean;
+      else delete p.look.colors;
+    }
+  }
   const uids = new Set();
   for (const p of value.pets) {
     if (!p || !Number.isSafeInteger(p.uid) || !Number.isSafeInteger(p.seed) || !Array.isArray(p.types)

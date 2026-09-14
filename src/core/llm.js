@@ -107,6 +107,51 @@ export async function chatWithSoul(cfg, pet, soul, userText, recentMessages, sig
   return parseSoulReply(text);
 }
 
+// ---- AI 一键涂色（v12）：用户描述整体色彩方案 → 四槽配色 JSON ----
+const PAINT_PROMPT = `你是宠物配色师。根据用户的色彩方案描述，为一只名为「{name}」的{types}系宠物设计涂色。
+严格输出 JSON（不要任何其他文字）：
+{
+  "body": {"f": "#rrggbb", "t": "#rrggbb"} 或 "#rrggbb",
+  "belly": 同上格式或省略（省略=保持默认）,
+  "accent": 同上格式或省略,
+  "type": 同上格式或省略
+}
+槽位说明：body=身体主色，belly=肚皮/口鼻（宜浅色），accent=手脚/耳尖等点缀，type=属性点缀件。
+规则：f=头顶/上部颜色，t=底部/下部颜色；上下色要和谐（同色系深浅或邻近色）；整体不超过 3 个色系；符合用户描述的风格。`;
+
+export async function generatePetPaint(cfg, pet, userScheme, signal) {
+  const prompt = PAINT_PROMPT
+    .replace('{name}', pet.name ?? '宠物')
+    .replace('{types}', (pet.types ?? []).join('/'));
+  const res = await chatRequest(cfg, [
+    { role: 'system', content: prompt },
+    { role: 'user', content: userScheme.slice(0, 200) },
+  ], { temperature: 0.8, maxTokens: 300, signal });
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content ?? '';
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('AI 返回中没有配色 JSON');
+  let raw;
+  try { raw = JSON.parse(m[0]); } catch { throw new Error('AI 配色 JSON 解析失败'); }
+  // 逐槽校验（与 paint.js 同一数据契约；非法槽位静默丢弃）
+  const HEX = /^#[0-9a-fA-F]{6}$/;
+  const oneSlot = (v) => {
+    if (typeof v === 'string' && HEX.test(v)) return v.toLowerCase();
+    if (v && typeof v === 'object' && HEX.test(v?.f ?? '') && HEX.test(v?.t ?? '')) {
+      return { f: v.f.toLowerCase(), t: v.t.toLowerCase() };
+    }
+    return undefined;
+  };
+  const out = {};
+  for (const slot of ['body', 'belly', 'accent', 'type']) {
+    const v = oneSlot(raw[slot]);
+    if (v) out[slot] = v;
+  }
+  if (!Object.keys(out).length) throw new Error('AI 未给出有效配色');
+  return out;
+}
+
+
 // ---- 灵魂战斗台词（流式）----
 // onChunk(delta) 增量回调；结束返回 { body, state }
 export async function tauntWithSoul(cfg, pet, soul, scene, signal, onChunk) {

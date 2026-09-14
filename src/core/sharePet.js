@@ -14,6 +14,7 @@
 // 任何字段越界即整体拒绝（返回 null 走"链接无效"路径）。
 
 import { TYPES } from '../data/types.js';
+import { sanitizeColors } from './paint.js';
 
 // ---- 精简字段名（URL 长度敏感；JSON 键映射表双向）----
 // 注意：全字段导出会把 lore（图鉴描述）原样带上——分享链接是公开可见的，
@@ -185,6 +186,11 @@ function validatePet(o) {
     eyes: oneOf(lk.eyes, LOOK_ENUMS.eyes, 'round'),
     palette: clampInt(lk.palette, 0, 15, 0),
   };
+  // 涂色（v12）：分享链接携带玩家自定义配色；非法值丢弃（渲染端自动回默认色）
+  if (lk.colors !== undefined) {
+    const clean = sanitizeColors(lk.colors);
+    if (clean) pet.look.colors = clean;
+  }
 
   // extraParts：上限 8 件（渲染叠件锚点按 index 布局，超大数组会拖垮渲染）
   if (Array.isArray(pet.extraParts)) {

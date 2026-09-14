@@ -51,12 +51,35 @@ export function paletteOf(pet) {
   // 负数取模仍为负索引（PALETTES[-5]=undefined），统一 ((i % len) + len) % len 归一
   const idx = Number.isInteger(pet.look?.palette) ? ((pet.look.palette % PALETTES.length) + PALETTES.length) % PALETTES.length : 0;
   const pal = PALETTES[idx] ?? PALETTES[0];
-  return {
+  const colors = {
     body: new THREE.Color(pal.body),
     belly: new THREE.Color(pal.belly),
     accent: new THREE.Color(pal.accent),
     type: new THREE.Color(TYPE_ACCENT[pet.types[0]] ?? 0x9fa19f),
   };
+  // v12 玩家涂色：look.colors 覆盖对应槽位（单色 '#hex'；渐变 {f,t} 在 materials 里展开成贴图）
+  const custom = pet.look?.colors;
+  if (custom && typeof custom === 'object' && !Array.isArray(custom)) {
+    for (const slot of ['body', 'belly', 'accent', 'type']) {
+      const v = custom[slot];
+      if (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v)) colors[slot] = new THREE.Color(v);
+    }
+  }
+  return colors;
+}
+
+// 玩家自定义渐变槽位：返回 { body: {f,t}|undefined, ... }（materials 渐变贴图用）
+function customGradients(pet) {
+  const custom = pet.look?.colors;
+  const out = {};
+  if (!custom || typeof custom !== 'object' || Array.isArray(custom)) return out;
+  for (const slot of ['body', 'belly', 'accent', 'type']) {
+    const v = custom[slot];
+    if (v && typeof v === 'object' && /^#[0-9a-fA-F]{6}$/.test(v?.f ?? '') && /^#[0-9a-fA-F]{6}$/.test(v?.t ?? '')) {
+      out[slot] = { f: v.f, t: v.t };
+    }
+  }
+  return out;
 }
 
 // Toon 三阶渐变材质
@@ -83,11 +106,12 @@ function createGradientMap() {
 
 function materials(pet) {
   const pal = paletteOf(pet);
+  const grad = customGradients(pet);
   return {
-    body: makeBodyMaterial(pal),
-    belly: toonMat(pal.belly),
-    accent: toonMat(pal.accent),
-    type: toonMat(pal.type),
+    body: makeBodyMaterial(pal, grad.body),
+    belly: makeSlotMaterial(pal.belly, grad.belly),
+    accent: makeSlotMaterial(pal.accent, grad.accent),
+    type: makeSlotMaterial(pal.type, grad.type),
     dark: toonMat(new THREE.Color(0x2a2a3a)),
     white: toonMat(new THREE.Color(0xffffff)),
     glow: new THREE.MeshBasicMaterial({ color: pal.type, transparent: true, opacity: 0.65 }),
@@ -122,7 +146,42 @@ function bodyGradientTexture() {
   return _bodyTex;
 }
 
-function makeBodyMaterial(pal) {
+// 玩家渐变贴图（v12）：#f→#t 的竖向线性渐变（UV v=1 头部亮色 → v=0 底部 t 色）。
+// 每个渐变槽一张小 canvas（缓存按 f+t 键）；作为 .map 与材质 color 白色相乘出渐变色。
+// 涂渐变时跳过默认体型明暗贴图（渐变本身就是颜色变化），保留 toon 三阶色阶。
+const _gradTexCache = new Map();
+function customGradientTexture(f, t) {
+  if (typeof document === 'undefined') return null;
+  const key = `${f}|${t}`;
+  if (_gradTexCache.has(key)) return _gradTexCache.get(key);
+  const c = document.createElement('canvas');
+  c.width = 4; c.height = 64;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 64);
+  grad.addColorStop(0, f);   // UV v=1 = 头/上
+  grad.addColorStop(1, t);   // UV v=0 = 底/下
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 4, 64);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  // 上限 32 张 LRU（自由涂色可能反复试色；Map 迭代序=插入序）
+  if (_gradTexCache.size > 32) {
+    const first = _gradTexCache.keys().next().value;
+    _gradTexCache.get(first)?.dispose?.();
+    _gradTexCache.delete(first);
+  }
+  _gradTexCache.set(key, tex);
+  return tex;
+}
+
+function makeBodyMaterial(pal, gradient) {
+  // 玩家渐变优先（白色底 + 渐变贴图）；否则默认体型明暗贴图 + pal.body
+  if (gradient) {
+    const tex = customGradientTexture(gradient.f, gradient.t);
+    if (tex) {
+      return new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: createGradientMap(), map: tex });
+    }
+  }
   const tex = bodyGradientTexture();
   const mat = new THREE.MeshToonMaterial({
     color: pal.body,
@@ -130,6 +189,15 @@ function makeBodyMaterial(pal) {
     ...(tex ? { map: tex } : {}),
   });
   return mat;
+}
+
+// belly/accent/type 槽：纯色 toon 或玩家渐变（渐变时 color 设白，贴图供色）
+function makeSlotMaterial(color, gradient) {
+  if (gradient) {
+    const tex = customGradientTexture(gradient.f, gradient.t);
+    if (tex) return new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: createGradientMap(), map: tex });
+  }
+  return toonMat(color);
 }
 
 let _shadowTex = null;

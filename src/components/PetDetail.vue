@@ -45,6 +45,7 @@
           <button :class="{ active: tab === 'soul' }" @click="tab = 'soul'">{{ t('💬 灵魂对话') }}</button>
           <button :class="{ active: tab === 'profile' }" @click="tab = 'profile'">{{ t('🧠 记忆') }} <em>{{ soul.memory.profile.length }}</em></button>
           <button :class="{ active: tab === 'story' }" @click="tab = 'story'">{{ t('📖 经历') }} <em>{{ soul.memory.episodic.length }}</em></button>
+          <button :class="{ active: tab === 'paint' }" @click="openPaint">{{ t('🎨 涂色') }} <em v-if="paintDirty">●</em></button>
         </div>
 
         <!-- 灵魂对话 -->
@@ -76,10 +77,55 @@
         </div>
 
         <!-- 经历 -->
-        <div v-else class="mem-panel">
+        <div v-else-if="tab === 'story'" class="mem-panel">
           <div v-if="!soul.memory.episodic.length" class="empty">{{ t('还没有值得记录的经历。') }}</div>
           <div v-for="(e, i) in [...soul.memory.episodic].reverse()" :key="i" class="mem-item story">
             <small>{{ fmtTime(e.t) }}</small> {{ e.text }}
+          </div>
+        </div>
+
+        <!-- 涂色（v12）：draft 预览，保存才生效 -->
+        <div v-else-if="tab === 'paint'" class="paint-panel">
+          <div class="paint-body">
+            <div class="paint-preview">
+              <Pet3D :key="paintModelTag" :pet="paintPreviewPet" :size="150" :idle-spin="true" drag-mode="panY" />
+              <small class="paint-hint">{{ t('预览实时生效，点「保存」才写入存档') }}</small>
+            </div>
+            <div class="paint-slots">
+              <div v-for="slot in PAINT_SLOTS" :key="slot.key" class="paint-slot">
+                <div class="slot-head">
+                  <span class="slot-name">{{ slotLabel(slot) }}</span>
+                  <button v-if="paintDraft[slot.key]" class="slot-clear" @click="clearSlot(slot.key)" :title="t('恢复默认色')">↺</button>
+                </div>
+                <div class="slot-ctrls">
+                  <label class="mode-pick">
+                    <input type="radio" :name="'pm-' + slot.key" :checked="!paintDraft[slot.key]?._grad" @change="setSlotMode(slot.key, false)" />
+                    <input type="color" class="slot-color" :value="slotHex(slot.key)" @input="setSlotColor(slot.key, $event.target.value)" />
+                  </label>
+                  <label class="mode-pick">
+                    <input type="radio" :name="'pm-' + slot.key" :checked="!!paintDraft[slot.key]?._grad" @change="setSlotMode(slot.key, true)" />
+                    <span class="grad-pair">
+                      <input type="color" class="slot-color sm" :value="slotHex(slot.key, 'f')" @input="setSlotGrad(slot.key, 'f', $event.target.value)" :title="t('头顶色')" />
+                      <span class="grad-arrow">→</span>
+                      <input type="color" class="slot-color sm" :value="slotHex(slot.key, 't')" @input="setSlotGrad(slot.key, 't', $event.target.value)" :title="t('底部色')" />
+                    </span>
+                  </label>
+                </div>
+              </div>
+              <div class="swatches">
+                <button v-for="c in SWATCHES" :key="c" class="swatch" :style="{ background: c }" @click="applySwatch(c)" :title="c"></button>
+              </div>
+              <div class="paint-ai">
+                <input v-model="aiScheme" class="ai-input" :placeholder="llmReady ? t('描述色彩方案，如「樱花粉渐变到白色」') : t('需在设置页启用 AI')" :disabled="!llmReady || aiPainting" @keyup.enter="aiPaint" />
+                <button class="ai-btn" :disabled="!llmReady || aiPainting || !aiScheme.trim()" @click="aiPaint">{{ aiPainting ? t('🎨…') : t('AI 一键涂色') }}</button>
+              </div>
+            </div>
+          </div>
+          <div class="paint-foot">
+            <button class="ghost sm" @click="resetPaint" :disabled="!paintDirty">{{ t('还原') }}</button>
+            <button v-if="hasSavedColors" class="ghost sm" @click="clearAllPaint">{{ t('清除全部涂色') }}</button>
+            <span class="flex1"></span>
+            <button class="paint-save" :disabled="!paintDirty" @click="savePaint">{{ t('保存涂色') }}</button>
           </div>
         </div>
       </div>
@@ -88,9 +134,9 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, reactive } from 'vue';
 import { llmConfig, showToast, rarityInfo, persist, save } from '../store.js';
-import { isLlmConfigured, chatWithSoul, generateShareCopy, localShareCopy, retranslatePet } from '../core/llm.js';
+import { isLlmConfigured, chatWithSoul, generateShareCopy, localShareCopy, retranslatePet, generatePetPaint } from '../core/llm.js';
 import { shareUrl, giftUrl } from '../core/sharePet.js';
 import { t, rarityName as rarityLabelOf, typeName as typeNameOf, relationTitle as relationTitleOf, traitLabel as traitLabelOf, locale } from '../core/i18n.js';
 import { chatOf, appendChat, maybeCompress, persistChat } from '../chat.js';
@@ -98,6 +144,8 @@ import { statsAt } from '../core/evolve.js';
 import { ensureSoul, traitLabels, updateSoul, driftTraits, addProfileFact, touchRelation } from '../core/soul.js';
 import Pet3D from './Pet3D.vue';
 import { TYPE_COLORS } from '../data/types.js';
+import { PAINT_SLOTS, SWATCHES, applyPaintToLook, sanitizeColors, hasCustomColors } from '../core/paint.js';
+import { PALETTES } from '../data/traits.js';
 
 const props = defineProps({ pet: { type: Object, default: null } });
 const emit = defineEmits(['close']);
@@ -114,7 +162,10 @@ const modelTag = computed(() => {
   if (!props.pet) return '0';
   const l = props.pet.look ?? {};
   const ex = (props.pet.extraParts ?? []).map(e => `${e.part}=${e.value}`).join(",");
-  return `${props.pet.seed}:${props.pet.phase ?? 0}:${l.ears}-${l.tail}-${l.accessory}-${l.pattern}:${l.eyes}:${l.body}:${ex}`;
+  // colors 参与签名（v12）：保存涂色后主预览重建（savePaint 直接改 props.pet.look，
+  // 对象引用变了但 Pet3D 的 watch 是 () => props.pet 引用级——colors 必须进 key）
+  const colorSig = l.colors ? JSON.stringify(l.colors) : '';
+  return `${props.pet.seed}:${props.pet.phase ?? 0}:${l.ears}-${l.tail}-${l.accessory}-${l.pattern}:${l.eyes}:${l.body}:${ex}:${colorSig}`;
 });
 // soul 从 soul.js 实时取（详情打开期间好感/记忆变化要反映到 UI）
 const soul = computed(() => (props.pet ? ensureSoul(props.pet) : null));
@@ -141,7 +192,12 @@ function ensure(p) {
 function chipStyle(tp) { return { background: TYPE_COLORS[tp] ?? '#9fa19f' }; }
 const typeLabel = (tp) => { void locale.value; return typeNameOf(tp); };
 const rarityLabel = (r) => { void locale.value; return rarityLabelOf(r); };
-function close() { emit('close'); }
+function close() {
+  // 未保存涂色草稿 → 确认丢弃（v12：draft 仅存内存，直接关闭会静默丢失）
+  if (tab.value === 'paint' && paintDirty.value
+    && !confirm(t('有未保存的涂色，确定丢弃并关闭吗？'))) return;
+  emit('close');
+}
 
 // ---- 分享双按钮：📣 分享 = LLM 生成社交文案+链接；🔗图标 = 仅复制链接 ----
 const sharing = ref(false);
@@ -239,6 +295,152 @@ function fmtTime(t) {
   const d = new Date(t);
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
+
+// ---- 涂色（v12）：draft 编辑 → 实时预览 → 保存才写存档 ----
+// paintDraft: { body: {v:'#hex'} | {grad:true,f,t} | null }——null=默认色
+const paintDraft = reactive({ body: null, belly: null, accent: null, type: null });
+const aiScheme = ref('');
+const aiPainting = ref(false);
+
+// 预览用宠物：pet 拷贝 + draft 折算成 look.colors（Pet3D watch pet 引用变化重建模型）
+const paintPreviewPet = computed(() => {
+  if (!props.pet) return null;
+  const paint = {};
+  for (const s of PAINT_SLOTS) {
+    const d = paintDraft[s.key];
+    if (!d) continue;
+    paint[s.key] = d.grad ? { f: d.f, t: d.t } : d.v;
+  }
+  const look = applyPaintToLook(props.pet.look, paint);
+  return { ...props.pet, look };
+});
+// dirty：draft 展开后的 colors 与存档里的不同
+const paintDirty = computed(() => {
+  if (!props.pet) return false;
+  const paint = {};
+  for (const s of PAINT_SLOTS) {
+    const d = paintDraft[s.key];
+    if (!d) continue;
+    paint[s.key] = d.grad ? { f: d.f, t: d.t } : d.v;
+  }
+  const nextLook = applyPaintToLook(props.pet.look, paint);
+  const a = JSON.stringify(nextLook.colors ?? null);
+  const b = JSON.stringify(sanitizeColors(props.pet.look?.colors) ?? null);
+  return a !== b;
+});
+const hasSavedColors = computed(() => (props.pet ? hasCustomColors(props.pet) : false));
+// 预览模型 key：look 变了强制 Pet3D 重建（与外层 modelTag 同策略）
+const paintModelTag = computed(() => `${modelTag.value}:paint:${JSON.stringify(paintPreviewPet.value?.look?.colors ?? null)}`);
+
+function openPaint() {
+  tab.value = 'paint';
+  // 从存档回填 draft：已有涂色 → 对应模式；无涂色 → 空（=默认）
+  for (const s of PAINT_SLOTS) {
+    const cur = props.pet?.look?.colors?.[s.key];
+    if (typeof cur === 'string') paintDraft[s.key] = { v: cur };
+    else if (cur && typeof cur === 'object') paintDraft[s.key] = { grad: true, f: cur.f, t: cur.t };
+    else paintDraft[s.key] = null;
+  }
+}
+
+function setSlotMode(key, grad) {
+  const cur = paintDraft[key];
+  if (grad) {
+    // 切到渐变：以当前单色为 f 起点（无则取 swatch 第一颗），t 默认白色
+    paintDraft[key] = { grad: true, f: cur?.v ?? '#ffd6e0', t: cur?.t ?? '#ffffff' };
+  } else {
+    // 切回单色：保留 f 色作为单色
+    paintDraft[key] = cur?.f ? { v: cur.f } : null;
+  }
+}
+function setSlotColor(key, hex) {
+  const cur = paintDraft[key];
+  if (cur?.grad) paintDraft[key] = { grad: true, f: hex, t: cur.t };
+  else paintDraft[key] = { v: hex };
+}
+function setSlotGrad(key, part, hex) {
+  const cur = paintDraft[key];
+  if (cur?.grad) paintDraft[key] = { grad: true, f: part === 'f' ? hex : cur.f, t: part === 't' ? hex : cur.t };
+  else paintDraft[key] = { grad: true, f: part === 'f' ? hex : (cur?.v ?? hex), t: part === 't' ? hex : '#ffffff' };
+}
+function clearSlot(key) { paintDraft[key] = null; }
+function applySwatch(hex) {
+  // 快捷色板：点到哪个槽的取色器最近？——简化：应用到当前第一个「已有色」的槽，否则 body。
+  // 更直觉的交互：按住槽位名高亮——首版先应用到 body（最常用），后续可加槽位选中态
+  const target = PAINT_SLOTS.find(s => paintDraft[s.key])?.key ?? 'body';
+  setSlotColor(target, hex);
+}
+function slotHex(key, part = null) {
+  const d = paintDraft[key];
+  if (!d) {
+    // 默认色：从预览宠的 palette 推（与 sprite3d 同源语义）
+    return part === 't' ? '#ffffff' : defaultSlotHex(key);
+  }
+  if (d.grad) return part === 't' ? d.t : d.f;
+  return part === 't' ? '#ffffff' : d.v;
+}
+// 默认槽位色（回填取色器初始值）：body/belly/accent 从 palette，type 从属性色
+function defaultSlotHex(key) {
+  const idx = Number.isInteger(props.pet?.look?.palette) ? props.pet.look.palette : 0;
+  const pal = PALETTES[((idx % PALETTES.length) + PALETTES.length) % PALETTES.length];
+  if (key === 'body') return pal.body;
+  if (key === 'belly') return pal.belly;
+  if (key === 'accent') return pal.accent;
+  return TYPE_COLORS[props.pet?.types?.[0]] ?? '#9fa19f';
+}
+const slotLabel = (slot) => t(slot.label);
+async function aiPaint() {
+  if (!llmReady.value || aiPainting.value || !props.pet) return;
+  aiPainting.value = true;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 20000);
+    const scheme = await generatePetPaint(llmConfig, props.pet, aiScheme.value, ctrl.signal).finally(() => clearTimeout(timer));
+    for (const s of PAINT_SLOTS) {
+      const v = scheme[s.key];
+      if (!v) continue;
+      paintDraft[s.key] = typeof v === 'string' ? { v } : { grad: true, f: v.f, t: v.t };
+    }
+    showToast(t('AI 配色已应用，满意就点保存吧！'), 2800);
+  } catch (err) {
+    console.warn('AI 涂色失败', err);
+    showToast(t('AI 涂色失败：{err}', { err: err.message }), 3000);
+  } finally {
+    aiPainting.value = false;
+  }
+}
+function resetPaint() { openPaint(); } // 回滚 draft 到存档基线
+function clearAllPaint() {
+  if (!props.pet || !confirm(t('清除 {name} 的全部自定义涂色？（恢复默认配色）', { name: props.pet.name }))) return;
+  const target = save.pets.find(p => p.uid === props.pet.uid);
+  if (!target) return;
+  target.look = { ...target.look };
+  delete target.look.colors;
+  persist();
+  // 同步展示层与 draft（retranslate 同款：props 可能是展示拷贝）
+  if (props.pet.look) delete props.pet.look.colors;
+  for (const s of PAINT_SLOTS) paintDraft[s.key] = null;
+  showToast(t('已恢复默认配色'));
+}
+async function savePaint() {
+  if (!props.pet || !paintDirty.value) return;
+  const paint = {};
+  for (const s of PAINT_SLOTS) {
+    const d = paintDraft[s.key];
+    if (!d) continue;
+    paint[s.key] = d.grad ? { f: d.f, t: d.t } : d.v;
+  }
+  const nextLook = applyPaintToLook(props.pet.look, paint);
+  // 写存档原对象（props.pet 可能是 withStats 展示拷贝——retranslate 已踩过这个坑）
+  const target = save.pets.find(p => p.uid === props.pet.uid);
+  if (!target) { showToast(t('保存失败，请稍后再试')); return; }
+  target.look = nextLook;
+  persist();
+  // 同步展示层引用（modelTag 现已含 colors，主预览自动重建）
+  props.pet.look = nextLook;
+  showToast(t('涂色已保存！'), 2400);
+}
+
 
 function scrollBottom() {
   nextTick(() => { if (msgsEl.value) msgsEl.value.scrollTop = msgsEl.value.scrollHeight; });
@@ -414,6 +616,66 @@ function clearChat() {
   min-height: 120px; padding: 10px 12px;
   background: rgba(120,130,160,0.07); border-radius: 12px;
   display: flex; flex-direction: column; gap: 8px;
+}
+
+/* ---- 涂色面板（v12） ---- */
+.paint-panel { display: flex; flex-direction: column; gap: 10px; }
+.paint-body { display: flex; gap: 14px; }
+.paint-preview { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.paint-hint { font-size: 10.5px; color: #8a92a5; }
+.paint-slots { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.paint-slot {
+  background: rgba(255,255,255,0.65); border: 1px solid rgba(120,130,160,0.16);
+  border-radius: 10px; padding: 6px 9px;
+}
+.slot-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.slot-name { font-size: 12px; font-weight: 700; color: #4a5470; }
+.slot-clear {
+  width: 22px; height: 22px; border-radius: 50%; border: none;
+  background: rgba(120,130,160,0.12); color: #5a6478; font-size: 12px; cursor: pointer;
+}
+.slot-clear:hover { background: rgba(120,130,160,0.25); }
+.slot-ctrls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.mode-pick { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.mode-pick input[type='radio'] { accent-color: var(--primary, #5b7fd4); margin: 0; }
+.slot-color {
+  width: 34px; height: 26px; padding: 0; border: 1px solid rgba(120,130,160,0.3);
+  border-radius: 6px; background: #fff; cursor: pointer;
+}
+.slot-color.sm { width: 26px; }
+.grad-pair { display: inline-flex; align-items: center; gap: 3px; }
+.grad-arrow { font-size: 11px; color: #8a92a5; }
+.swatches { display: flex; gap: 4px; flex-wrap: wrap; }
+.swatch {
+  width: 20px; height: 20px; border-radius: 6px; border: 1px solid rgba(120,130,160,0.3);
+  cursor: pointer; padding: 0;
+}
+.swatch:hover { transform: scale(1.15); }
+.paint-ai { display: flex; gap: 6px; }
+.ai-input {
+  flex: 1; min-width: 0; border: 1px solid rgba(120,130,160,0.25); border-radius: 10px;
+  padding: 7px 10px; font-size: 12px; outline: none; background: #fff;
+}
+.ai-input:focus { border-color: var(--primary, #5b7fd4); }
+.ai-btn {
+  flex-shrink: 0; border: none; border-radius: 10px; padding: 7px 12px; font-size: 12px;
+  background: linear-gradient(120deg, #9c6ade, #e8497c); color: #fff; cursor: pointer;
+  white-space: nowrap;
+}
+.ai-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.paint-foot { display: flex; align-items: center; gap: 8px; }
+.paint-foot .flex1 { flex: 1; }
+.paint-save {
+  border: none; border-radius: 12px; padding: 8px 20px; font-size: 13px; font-weight: 700;
+  background: var(--primary, #5b7fd4); color: #fff; cursor: pointer;
+}
+.paint-save:hover:not(:disabled) { filter: brightness(1.08); }
+.paint-save:disabled { opacity: 0.45; cursor: not-allowed; }
+.paint-foot .ghost { background: rgba(120,130,160,0.1); border: none; border-radius: 10px; padding: 6px 12px; color: #5a6478; cursor: pointer; font-size: 12px; }
+.paint-foot .ghost:disabled { opacity: 0.45; cursor: not-allowed; }
+@media (max-width: 560px) {
+  .paint-body { flex-direction: column; align-items: center; }
+  .paint-slots { width: 100%; }
 }
 .mem-item { font-size: 13px; line-height: 1.7; color: #3a4252; }
 .mem-item.story small { color: #8a92a5; margin-right: 8px; font-size: 11px; }

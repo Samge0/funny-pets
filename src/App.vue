@@ -165,7 +165,9 @@ function petSnapshot(pet) {
 function petSnapshotKey(pet) {
   const lookSig = `${pet.look.ears}-${pet.look.tail}-${pet.look.accessory}-${pet.look.pattern}-${pet.look.eyes}-${pet.look.body}`;
   const extraSig = (pet.extraParts ?? []).map(e => `${e.part}=${e.value}`).join(',');
-  return `${pet.seed}:${pet.phase ?? 0}:${lookSig}:${extraSig}`;
+  // colors 参与签名（v12）：涂色保存后图鉴缩略图必须重渲，否则永远旧色
+  const colorSig = pet.look.colors ? JSON.stringify(pet.look.colors) : '';
+  return `${pet.seed}:${pet.phase ?? 0}:${lookSig}:${extraSig}:${colorSig}`;
 }
 
 // ---- 刷新野生精灵 ----

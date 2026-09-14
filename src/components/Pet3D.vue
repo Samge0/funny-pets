@@ -251,6 +251,7 @@ function dispose() {
   cancelAnimationFrame(raf);
   if (renderer) {
     renderer.dispose();
+    renderer.forceContextLoss?.(); // 立即归还 WebGL context（涂色预览频繁重建时防 context 堆积强杀）
     renderer.domElement?.remove();
     renderer = null;
   }
