@@ -168,10 +168,12 @@ export function evolvePet(pet, phase) {
     base[k] = Math.round(pet.base[k] * growth * (0.96 + rng() * 0.08));
   }
 
-  // 名字进化后缀
+  // 名字进化后缀（zh 图腾感）。
+  // 截断按语言自适应：CJK 名保留前 4 字；非 CJK 名（EN 长名）保留完整词干——
+  // slice(0,4) 按码元截会把 "Sir Fluffington" 砍成 "Sir 纳"
   const suffix = phase === 1 ? '纳' : '皇';
   const stem = pet.name.replace(/(纳|皇)$/, '');
-  const name = stem.slice(0, 4) + suffix;
+  const name = (/[^\u0000-\u00ff]/.test(stem) ? stem.slice(0, 4) : stem.slice(0, 24)) + suffix;
 
   // 技能：全部升级威力 + 50% 概率把最后一个槽替换为本属性更强的攻击技
   const pool = [...MOVES[pet.types[0]], ...(pet.types[1] ? MOVES[pet.types[1]] : [])];
@@ -213,7 +215,9 @@ export function applyExpGain(pet, amount) {
       return nm;
     });
     if (upgradedNames.length) result.newMoves.push(...upgradedNames);
-    // 升级属性随机掷点（趣味性）：每级 4~8 点总量，随机分配到 HP/攻/防/速
+    // 升级属性随机掷点（趣味性）：每级 4~8 点总量，随机分配到 HP/攻/防/速。
+    // 掷点必须写入 pet.base——statsAt 只读 base+iv+level，不落 base 的增量对
+    // 战斗/存档完全不可见（此前只进庆祝弹窗的 chips，数值成长是纯装饰）
     if (!result.statGains) result.statGains = { hp: 0, atk: 0, def: 0, spd: 0 };
     let pool = 4 + Math.floor(Math.random() * 5); // 4~8
     const keys = ['hp', 'atk', 'def', 'spd'];
@@ -221,6 +225,7 @@ export function applyExpGain(pet, amount) {
       const k = keys[Math.floor(Math.random() * keys.length)];
       const add = 1 + Math.floor(Math.random() * Math.min(3, pool)); // 1~3 点
       result.statGains[k] += add;
+      pet.base[k] = (pet.base[k] ?? 0) + add; // 落入种族值（HP 槽 ×1 系数即可，IV 已在公式内）
       pool -= add;
     }
     const nextPhase = (pet.phase ?? 0) + 1;

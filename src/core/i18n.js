@@ -683,11 +683,14 @@ const VALUE_JA = {
 };
 const VALUE_ZH = {
   none: '无', round: '圆', pointy: '尖', long: '长', fin: '鳍',
-  stub: '短尾', curl: '卷尾', fluff: '绒尾', spark: '电尾',
+  stub: '短', curl: '卷', fluff: '绒', spark: '电',
   flower: '小花', leaf: '叶芽', horn: '小角', gem: '额晶',
+  bow: '蝴蝶结', bell: '铃铛',
   spots: '斑点', stripe: '条纹', belly: '肚皮',
-  dot: '豆豆眼', sleepy: '眯眯眼', sparkle: '星星眼', round: '圆眼',
+  dot: '豆豆眼', sleepy: '眯眯眼', sparkle: '星星眼', big: '葡葡大眼', shy: '弯弯笑眼',
   round_body: '圆滚滚', pear: '梨形', tall: '瘦长', blob: '软团', drop: '水滴',
+  // v11 枚举补全：耳朵（绒绒/折垂/小圆短）——此前裸键直接显示英文 key
+  fluffy: '绒绒', droopy: '折垂',
 };
 
 const TRAIT_EN = {

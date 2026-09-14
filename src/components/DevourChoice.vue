@@ -72,7 +72,7 @@
         </div>
 
         <div class="devour-actions">
-          <button class="ghost" @click="confirmAll">{{ t('跳过') }}</button>
+          <button class="ghost" @click="skipAll">{{ t('跳过') }}</button>
           <button class="primary" @click="confirmAll">{{ t('确认吞噬') }}</button>
         </div>
       </div>
@@ -196,6 +196,12 @@ function confirmAll() {
     partPicks.push({ ...pp, mode: partHow[pi] ?? 'auto' });
   });
   resolveOffer(movePicks, partPicks);
+}
+
+// 跳过 = 放弃全部战利品（此前「跳过」也绑 confirmAll：候选默认全勾，
+// 点跳过实际吞掉全部——与按钮语义完全相反）
+function skipAll() {
+  resolveOffer([], []);
 }
 </script>
 
