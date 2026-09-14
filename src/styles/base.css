@@ -184,11 +184,103 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 .float-txt.who-player { left: 68%; }
 .float-txt.who-wild { left: 30%; }
+.float-txt.ult { font-size: 30px; text-shadow: 0 2px 0 #fff, 0 0 18px currentColor, 0 0 32px currentColor; }
 @keyframes float-up {
   0% { transform: translateY(0) scale(0.7); opacity: 0; }
   20% { transform: translateY(-14px) scale(1.15); opacity: 1; }
   100% { transform: translateY(-64px) scale(1); opacity: 0; }
 }
+
+/* ================= v13 战斗技能特效 =================
+   形状家族 × 属性色双通道：形状认家族（7 类），颜色认属性（18 色 --fx-c）。
+   cast=释放侧（跟随攻方位置），hit=受击点爆散。纯 CSS 动画，JS 只负责挂载/清理。 */
+.fx-layer { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+
+/* ---- 释放特效（攻方位置向上爆发） ---- */
+.fx-cast { position: absolute; bottom: 34%; width: 10px; height: 10px; }
+.fx-cast.side-wild { left: 30%; }
+.fx-cast.side-player { left: 68%; }
+.fx-cast .fx-part {
+  position: absolute; left: 0; top: 0; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--fx-c); opacity: 0;
+  box-shadow: 0 0 10px var(--fx-c), 0 0 20px var(--fx-c);
+}
+.fx-cast.ult .fx-part { width: 17px; height: 17px; box-shadow: 0 0 14px var(--fx-c), 0 0 30px var(--fx-c); }
+/* 粒子放射：每个粒子一条独立轨迹（角度×距离×时长微差 → 喷射感） */
+@keyframes part-fly {
+  0% { transform: translate(0, 0) scale(0.4); opacity: 0; }
+  18% { opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) scale(1.1); opacity: 0; }
+}
+.fx-cast .p1 { --dx: -46px; --dy: -58px; animation: part-fly 0.85s ease-out 0.02s forwards; }
+.fx-cast .p2 { --dx: 44px;  --dy: -64px; animation: part-fly 0.8s ease-out 0.06s forwards; }
+.fx-cast .p3 { --dx: -14px; --dy: -82px; animation: part-fly 0.9s ease-out 0.1s forwards; }
+.fx-cast .p4 { --dx: 16px;  --dy: -70px; animation: part-fly 0.78s ease-out 0.04s forwards; }
+.fx-cast .p5 { --dx: 0px;   --dy: -92px; animation: part-fly 0.95s ease-out 0.08s forwards; }
+.fx-cast.ult .p6 { --dx: -66px; --dy: -40px; animation: part-fly 0.88s ease-out 0.12s forwards; }
+.fx-cast.ult .p7 { --dx: 66px;  --dy: -44px; animation: part-fly 0.84s ease-out 0.14s forwards; }
+.fx-cast.ult .p8 { --dx: 0px;   --dy: -110px; animation: part-fly 1s ease-out 0.05s forwards; }
+/* 冲击环：技能色圆环向外扩散淡出 */
+.fx-cast .fx-ring {
+  position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; border-radius: 50%;
+  border: 3px solid var(--fx-c); transform: translate(-50%, -50%); opacity: 0;
+  box-shadow: 0 0 16px var(--fx-c);
+}
+@keyframes ring-spread { 0% { width: 18px; height: 18px; opacity: 0.95; } 100% { width: 130px; height: 130px; opacity: 0; } }
+.fx-cast .fx-ring { animation: ring-spread 0.7s ease-out forwards; }
+.fx-cast.ult .fx-ring { border-width: 5px; animation: ring-spread 0.9s ease-out forwards; }
+/* 必杀全屏滤镜：属性色闪光一扫（页面级 .arena-flash 由 ult 类触发） */
+@keyframes ult-flash {
+  0% { opacity: 0; } 18% { opacity: 0.34; } 100% { opacity: 0; }
+}
+.fx-cast.ult::before {
+  content: ''; position: fixed; inset: 0; background: var(--fx-c); opacity: 0;
+  animation: ult-flash 0.55s ease-out 0.05s forwards; pointer-events: none;
+}
+
+/* 家族差异：电=锯齿闪电线；地震=地面横波条 */
+.fx-cast .fx-bolt {
+  position: absolute; left: -4px; top: -96px; width: 14px; height: 96px; opacity: 0;
+  background: linear-gradient(180deg, transparent, var(--fx-c) 30%, #fff 50%, var(--fx-c) 70%, transparent);
+  clip-path: polygon(45% 0, 100% 22%, 62% 40%, 96% 58%, 40% 100%, 55% 62%, 0 48%, 48% 34%);
+  filter: drop-shadow(0 0 8px var(--fx-c));
+  animation: bolt-strike 0.55s ease-out 0.05s forwards;
+}
+@keyframes bolt-strike { 0% { opacity: 0; transform: scaleY(0.3); } 22% { opacity: 1; transform: scaleY(1.05); } 60% { opacity: 0.9; } 100% { opacity: 0; transform: scaleY(1); } }
+.fx-cast .fx-quake {
+  position: absolute; left: 50%; bottom: -6px; width: 160px; height: 10px; opacity: 0;
+  transform: translateX(-50%); border-radius: 50%;
+  background: radial-gradient(ellipse at center, var(--fx-c), transparent 70%);
+  animation: quake-wave 0.8s ease-out forwards;
+}
+@keyframes quake-wave { 0% { opacity: 0.95; transform: translateX(-50%) scaleX(0.3); } 100% { opacity: 0; transform: translateX(-50%) scaleX(1.6); } }
+
+/* ---- 受击特效（防守方位置粒子爆散 + 白闪） ---- */
+.fx-hit { position: absolute; top: 42%; width: 10px; height: 10px; }
+.fx-hit.side-wild { left: 30%; }
+.fx-hit.side-player { left: 68%; }
+.fx-hit .hit-part {
+  position: absolute; width: 9px; height: 9px; border-radius: 2px; opacity: 0;
+  background: var(--fx-c); box-shadow: 0 0 8px var(--fx-c);
+}
+.fx-hit.ult .hit-part { width: 13px; height: 13px; }
+@keyframes part-scatter {
+  0% { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) rotate(220deg) scale(0.4); opacity: 0; }
+}
+.fx-hit .h1 { --dx: -52px; --dy: -34px; animation: part-scatter 0.62s ease-out forwards; }
+.fx-hit .h2 { --dx: 50px;  --dy: -40px; animation: part-scatter 0.58s ease-out 0.03s forwards; }
+.fx-hit .h3 { --dx: -38px; --dy: 30px;  animation: part-scatter 0.66s ease-out 0.02s forwards; }
+.fx-hit .h4 { --dx: 42px;  --dy: 34px;  animation: part-scatter 0.6s ease-out 0.05s forwards; }
+.fx-hit .h5 { --dx: -8px;  --dy: -62px; animation: part-scatter 0.7s ease-out 0.01s forwards; }
+.fx-hit .h6 { --dx: 6px;   --dy: 56px;  animation: part-scatter 0.64s ease-out 0.04s forwards; }
+@keyframes hit-dot-flash { 0% { opacity: 0.9; transform: translate(-50%, -50%) scale(0.4); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(2.6); } }
+.fx-hit .hit-flash {
+  position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; border-radius: 50%; opacity: 0;
+  background: radial-gradient(circle, #fff 18%, var(--fx-c) 55%, transparent 75%);
+  animation: hit-dot-flash 0.5s ease-out forwards;
+}
+
 
 .battle-log {
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
@@ -263,6 +355,15 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 /* ---- 语言下拉 ---- */
 .lang-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .lang-row span { font-size: 13px; color: var(--text-dim); flex-shrink: 0; }
+/* v13.1 战斗特效开关行：复用 lang-row 的行布局 + 状态徽标 */
+.fx-toggle { display: flex; align-items: center; gap: 10px; margin-top: 8px; cursor: pointer; }
+.fx-toggle input { accent-color: var(--primary, #5b7fd4); width: 16px; height: 16px; }
+.fx-toggle span { font-size: 13px; }
+.fx-state {
+  font-style: normal; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 8px;
+  background: rgba(111, 212, 138, 0.18); color: #3d8a56;
+}
+.fx-toggle input:not(:checked) + span + .fx-state { background: rgba(120,130,160,0.15); color: var(--text-dim); }
 .lang-select {
   flex: 1; max-width: 260px; padding: 7px 10px; border-radius: 10px;
   border: 1px solid rgba(120,130,160,0.35); background: #fff; color: var(--text, #2a3040);

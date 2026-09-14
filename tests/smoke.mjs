@@ -207,13 +207,20 @@ console.log(`✓ 详情弹窗（${detailName.trim().slice(0, 6)}）+ 聊天面�
 await page.screenshot({ path: 'test-results/pet-detail.png', fullPage: false });
 await page.locator('.detail-close').click();
 await page.waitForTimeout(400);
+// flaky 防御：关闭有 0.25s 过渡动画，偶发首次点击被吞——未关则再点一次
+if (await page.locator('.detail-card').count()) {
+  await page.locator('.detail-close').click().catch(() => {});
+  await page.waitForTimeout(500);
+}
 if (await page.locator('.detail-card').count()) throw new Error('详情弹窗未关闭');
 
 // ============ 设置视图 ============
 await page.getByRole('button', { name: /设置/ }).click();
 await page.locator('.settings-view').waitFor({ timeout: 3000 });
-if ((await page.locator('.settings-view input[type="checkbox"]').count()) !== 1) throw new Error('LLM 开关缺失');
-console.log('✓ 设置视图 + LLM 开关');
+// v13.1 起设置页有 2 个勾选框（LLM 开关 + 战斗特效开关）——按语义断言而非数量
+if (!(await page.locator('.settings-view label:has-text("启用 AI 生成") input[type="checkbox"]').count())) throw new Error('LLM 开关缺失');
+if (!(await page.locator('.fx-toggle input[type="checkbox"]').count())) throw new Error('战斗特效开关缺失');
+console.log('✓ 设置视图 + LLM 开关 + 战斗特效开关');
 
 // ============ 进化验证：注入 17 级高经验，打赢一场触发 18 级进化 ============
 await page.evaluate(() => {

@@ -7,6 +7,7 @@ import { isLlmConfigured, generatePetWithLlm, tauntWithSoul, localTaunt } from '
 import { ensureSoul, makeEphemeralSoul, updateSoul, driftTraits, touchRelation, addEpisodic, onEvolve, forgetSoul } from './core/soul.js';
 import { forgetChat } from './chat.js';
 import { newBattleState, battleTurn, catchChance } from './core/battle.js';
+import { moveFx, hitFx, battleFxEnabled, setBattleFxEnabled } from './core/fx.js';
 import { statsAt, offerDevourMoves, offerDevourParts, applyDevour } from './core/evolve.js';
 import { bodyTypeBiased } from './core/sprite3d.js';
 import { TYPE_COLORS } from './data/types.js';
@@ -304,6 +305,17 @@ function startBattle() {
 const anim = ref({ who: null, kind: null }); // who: player|wild, kind: attack|hit|faint
 const shakeScreen = ref(false);
 const floatTexts = ref([]);
+// v13 技能特效：{ id, side, fx, kind:'cast'|'hit' }——cast=释放侧特效, hit=受击爆散
+const battleFx = ref([]);
+let fxId = 1;
+
+function spawnFx(side, fx, kind) {
+  if (!battleFxEnabled.value) return; // v13.1：设置页可关（关闭=不挂特效 DOM，基础 lunge/闪白保留）
+  const item = { id: fxId++, side, fx, kind };
+  battleFx.value.push(item);
+  // cast 900ms / hit 700ms 后自动清理（与 CSS 动画时长匹配）
+  setTimeout(() => { battleFx.value = battleFx.value.filter(f => f.id !== item.id); }, kind === 'cast' ? 950 : 750);
+}
 
 function playAnim(kind, who = null, text = null) {
   anim.value = { who, kind };
@@ -436,13 +448,36 @@ async function act(action) {
     // 逐事件播放动画与飘字
     for (const e of events) {
       if (e.type === 'damage') {
-        playAnim('hit', e.side === 'player' ? 'wild' : 'player', `-${e.damage}${e.crit ? t(' 会心!') : ''}`);
+        // v13 技能特效：释放侧 cast（技能色形状）→ 受击侧 hit（属性色爆散）
+        const fx = moveFx(e.moveName);
+        spawnFx(e.side, fx, 'cast');
+        playAnim('hit', e.side === 'player' ? 'wild' : 'player', null);
+        // 飘字（v13.1）：开特效=属性色+必杀放大；关特效=默认红色标准尺寸
+        {
+          const id = Date.now() + Math.random();
+          const styled = battleFxEnabled.value;
+          floatTexts.value.push({
+            id,
+            text: `-${e.damage}${e.crit ? t(' 会心!') : ''}`,
+            who: e.side === 'player' ? 'wild' : 'player',
+            color: styled ? fx.color : null,
+            ult: styled && fx.ultimate,
+          });
+          setTimeout(() => { floatTexts.value = floatTexts.value.filter(f => f.id !== id); }, 1100);
+        }
+        spawnFx(e.side === 'player' ? 'wild' : 'player', hitFx(e.moveName, e.damage, e.crit), 'hit');
+        if (fx.ultimate && battleFxEnabled.value) {
+          shakeScreen.value = true;
+          setTimeout(() => { shakeScreen.value = false; }, 420);
+        }
         if (e.side === 'player') fireTaunt(state.active, state.wild, e);
         else if (e.side === 'wild') fireWildTaunt(state.wild, state.active, e); // 敌方也有战斗心声（流式）
       } else if (e.type === 'heal') {
         playAnim('buff', e.side, `+${e.amount}`);
+        spawnFx(e.side, moveFx(e.moveName), 'cast');
       } else if (e.type === 'buff' || e.type === 'miss') {
         playAnim('buff', e.side, e.type === 'miss' ? 'MISS!' : null);
+        if (e.moveName) spawnFx(e.side, moveFx(e.moveName), 'cast');
         if (e.type === 'miss' && e.side === 'player') fireTauntMiss(state.active, state.wild);
       } else if (e.type === 'faint') {
         playAnim('faint', e.side);
@@ -716,6 +751,11 @@ function onLangChange() {
   const ok = setLocale(langPref.value);
   if (ok) showToast(t('语言已切换'), 2000);
 }
+// ---- 战斗特效开关（v13.1）：fx.js 持久化 localStorage，关闭后战斗即时生效 ----
+function onFxToggle(e) {
+  setBattleFxEnabled(e.target.checked);
+  showToast(battleFxEnabled.value ? t('战斗特效已开启') : t('战斗特效已关闭'), 2000);
+}
 function doExport() {
   // 存档 + 灵魂档案 + 聊天记录 + LLM 配置一起导出（人格/羁绊/记忆/接口配置不丢失）。
   // apiKey 除外：导出文件常被分享来排查问题，密钥绝不能随之出门（隐私最小化）；
@@ -911,7 +951,22 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
           </div>
           <!-- 飘字 -->
           <div class="float-layer">
-            <span v-for="f in floatTexts" :key="f.id" class="float-txt" :class="'who-' + f.who">{{ f.text }}</span>
+            <span v-for="f in floatTexts" :key="f.id" class="float-txt" :class="['who-' + f.who, { ult: f.ult }]" :style="f.color ? { color: f.color } : null">{{ f.text }}</span>
+          </div>
+          <!-- v13 技能特效层：cast（释放侧形状）+ hit（受击爆散粒子） -->
+          <div class="fx-layer">
+            <template v-for="f in battleFx" :key="f.id">
+              <div v-if="f.kind === 'cast'" class="fx-cast" :class="['fx-' + f.fx.family, 'side-' + f.side, { ult: f.fx.ultimate }]" :style="{ '--fx-c': f.fx.color }">
+                <i v-for="n in (f.fx.ultimate ? 8 : 5)" :key="n" class="fx-part" :class="'p' + n"></i>
+                <i class="fx-ring"></i>
+                <i v-if="f.fx.family === 'bolt'" class="fx-bolt"></i>
+                <i v-if="f.fx.family === 'quake'" class="fx-quake"></i>
+              </div>
+              <div v-else class="fx-hit" :class="['side-' + f.side, { ult: f.fx.intensity >= 3 }]" :style="{ '--fx-c': f.fx.color }">
+                <i v-for="n in 6" :key="n" class="hit-part" :class="'h' + n"></i>
+                <i class="hit-flash"></i>
+              </div>
+            </template>
           </div>
           <!-- 灵魂对话气泡：流式输出在竞技场底部（精灵下方），随说话者靠左/靠右；双方独立互不打断 -->
           <Transition name="taunt">
@@ -1021,6 +1076,15 @@ onMounted(() => { if (!sharedPet.value && !location.hash.match(/^#p=/)) view.val
             </select>
           </label>
           <p class="hint" v-if="langPref === 'auto'">{{ t('当前跟随浏览器：{lang}', { lang: locale }) }}</p>
+        </div>
+        <div class="panel">
+          <h3>{{ t('⚔️ 战斗') }}</h3>
+          <p class="hint">{{ t('技能特效（粒子/冲击环/全屏闪光/震屏）。关闭后仅保留基础受击反馈，战斗更省电。') }}</p>
+          <label class="fx-toggle">
+            <input type="checkbox" :checked="battleFxEnabled" @change="onFxToggle" />
+            <span>{{ t('战斗特效') }}</span>
+            <em class="fx-state">{{ battleFxEnabled ? t('开') : t('关') }}</em>
+          </label>
         </div>
         <div class="panel">
           <h3>{{ t('🤖 AI 随机生成（可选）') }}</h3>
